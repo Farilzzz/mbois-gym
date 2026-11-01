@@ -1,0 +1,17 @@
+{
+  "name": "mbois-gym-projections-tool",
+  "version": "1.0.0",
+  "description": "Trusted Firebase Admin SDK manager_dashboard projection builder CLI and tests for Mbois Gym",
+  "private": true,
+  "main": "cli.cjs",
+  "bin": {
+    "build-manager-dashboard": "./cli.cjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "build": "node ./cli.cjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.1.0"
+  }
+}

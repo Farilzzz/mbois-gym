@@ -279,15 +279,13 @@ GoRouter _createRouter(Ref ref, Listenable refresh) => GoRouter(
     final loggedIn = cloudAuth.value != null || auth.value != null;
     final isAllowedSignedOut = {
       '/login',
-      '/setup',
-      '/legacy-archive',
       '/cloud-pilot',
     }.contains(state.matchedLocation);
     if (!loggedIn && !isAllowedSignedOut) {
       return '/login';
     }
     if (loggedIn &&
-        {'/login', '/setup', '/splash'}.contains(state.matchedLocation)) {
+        {'/login', '/splash'}.contains(state.matchedLocation)) {
       return '/dashboard';
     }
     return null;
@@ -295,11 +293,6 @@ GoRouter _createRouter(Ref ref, Listenable refresh) => GoRouter(
   routes: [
     GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
-    GoRoute(path: '/setup', builder: (context, state) => const SetupScreen()),
-    GoRoute(
-      path: '/legacy-archive',
-      builder: (context, state) => const LegacyArchiveScreen(),
-    ),
     ShellRoute(
       builder: (context, state, child) => AppShell(child: child),
       routes: [

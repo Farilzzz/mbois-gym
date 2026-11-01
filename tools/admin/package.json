@@ -1,0 +1,17 @@
+{
+  "name": "mbois-gym-admin-tool",
+  "version": "1.0.0",
+  "description": "Administrative CLI for Mbois Gym Firebase Auth & Firestore provisioning using Admin SDK (ADC, atomic consistency, role synchronization)",
+  "private": true,
+  "main": "admin.cjs",
+  "bin": {
+    "mbois-admin": "./admin.cjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "admin": "node ./admin.cjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.1.0"
+  }
+}

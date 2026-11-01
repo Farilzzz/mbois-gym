@@ -161,8 +161,8 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
     await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' }));
     await assertSucceeds(read('manager', 'users/pt1'));
     await assertSucceeds(getDocs(collection(dbFor('manager'), 'users')));
-    await assertSucceeds(read('manager', 'clients/c2'));
-    await assertSucceeds(read('manager', 'clients/c2/sessions/old'));
+    await assertFails(read('manager', 'clients/c2'));
+    await assertFails(read('manager', 'clients/c2/sessions/old'));
     await assertFails(read('pt1', 'users/pt2'));
     await assertFails(read('pt1', 'clients/c2'));
   });
@@ -181,13 +181,39 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
     await assertSucceeds(setDoc(doc(dbFor('pt1'), 'clients/own_single'), { name: 'self', assignedTrainerIds: ['pt1'] }));
     await assertFails(setDoc(doc(dbFor('pt1'), 'clients/own_plus'), { name: 'selfplus', assignedTrainerIds: ['pt1', 'pt2'] }));
   });
-  it('manager lists every client and descendant; inactive manager loses access', async () => {
+  it('manager cannot get/list sensitive clients or descendants, including collection groups', async () => {
     await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' }));
-    await assertSucceeds(getDocs(collection(dbFor('manager'), 'clients')));
-    for (const sub of descendants) await assertSucceeds(getDocs(collection(dbFor('manager'), `clients/c2/${sub}`)));
+    await assertFails(getDocs(collection(dbFor('manager'), 'clients')));
+    for (const sub of [...descendants, 'signatures']) {
+      await assertFails(read('manager', `clients/c2/${sub}/old`));
+      await assertFails(getDocs(collection(dbFor('manager'), `clients/c2/${sub}`)));
+      await assertFails(getDocs(collectionGroup(dbFor('manager'), sub)));
+    }
+  });
+  it('trusted projection is readable only by active manager and immutable from client SDKs', async () => {
+    const paths = [
+      'manager_dashboard/2026-Q1',
+      'manager_dashboard/2026-Q1/trainers/pt1',
+      'manager_dashboard/2026-Q1/trainers/pt1/clients/c1',
+      'manager_dashboard/2026-Q1/trainers/pt1/clients/c1/attendance/s1',
+    ];
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' });
+      for (const path of paths) await setDoc(doc(ctx.firestore(), path), { name: 'Operational projection' });
+    });
+    for (const path of paths) {
+      await assertSucceeds(read('manager', path));
+      await assertSucceeds(getDocs(collection(dbFor('manager'), path.substring(0, path.lastIndexOf('/')))));
+      for (const uid of [null, 'pt1', 'inactive', 'pending', 'unknown']) await assertFails(read(uid, path));
+      for (const uid of ['manager', 'pt1']) {
+        await assertFails(setDoc(doc(dbFor(uid), path + '-new'), { name: 'Forged' }));
+        await assertFails(updateDoc(doc(dbFor(uid), path), { name: 'Forged' }));
+        await assertFails(deleteDoc(doc(dbFor(uid), path)));
+      }
+    }
+    await assertFails(read('manager', paths[3] + '/secret/data'));
     await adminUpdate('users/manager', { status: 'inactive' });
-    await assertFails(read('manager', 'clients/c1'));
-    await assertFails(read('manager', 'users/pt1'));
+    for (const path of paths) await assertFails(read('manager', path));
   });
   it('manager manages catalog and assignment; trainer cannot alter either', async () => {
     await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' }));

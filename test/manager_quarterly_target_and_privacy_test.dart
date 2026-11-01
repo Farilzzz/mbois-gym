@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mbois_gym_pt/features/manager_dashboard_screen.dart';
 
@@ -61,7 +62,9 @@ void main() {
   });
 
   group('Isolasi Privasi Absensi Klien Role Manager', () {
-    testWidgets('Detail absensi klien menampilkan info sesi tanpa membocorkan data rahasia', (tester) async {
+    testWidgets(
+        'Alur navigasi nyata ManagerDashboardScreen: buka detail PT -> daftar klien -> dialog absensi read-only tanpa kebocoran data sensitif',
+        (tester) async {
       final clientItem = ManagerClientItem(
         id: 'c-101',
         name: 'Klien Uji Rahasia',
@@ -74,7 +77,6 @@ void main() {
             sessionNumber: 1,
             scheduledTime: DateTime(2026, 3, 10, 14, 0),
             status: 'completed',
-            notes: 'Hadir tepat waktu',
           ),
           ManagerClientAttendanceRecord(
             sessionNumber: 2,
@@ -84,48 +86,94 @@ void main() {
         ],
       );
 
+      final repo = InMemoryManagerDashboardRepository(
+        initialData: ManagerDashboardData(
+          totalActivePt: 1,
+          totalActiveClients: 1,
+          totalPackagesSold: 1,
+          totalSales: 1000000.0,
+          monthlySales: const [0.0, 0.0, 1000000.0],
+          trainers: [
+            TrainerPerformance(
+              id: 'pt-1',
+              name: 'Coach Faril',
+              specialization: 'Strength & Conditioning',
+              activeClients: 1,
+              packagesSold: 1,
+              totalSales: 1000000.0,
+              quarterlyTarget: 5000000.0,
+              monthlySales: const [0.0, 0.0, 1000000.0],
+              clients: [clientItem],
+            ),
+          ],
+        ),
+      );
+
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Builder(
-              builder: (ctx) => ElevatedButton(
-                onPressed: () {
-                  showDialog<void>(
-                    context: ctx,
-                    builder: (dCtx) => AlertDialog(
-                      title: Text('Detail Absensi • ${clientItem.name}'),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('Paket: ${clientItem.packageName}'),
-                          Text('Dihadiri: ${clientItem.attendedSessions}'),
-                          Text('Sisa: ${clientItem.remainingSessions}'),
-                          Text('Catatan Privasi: Asesmen kesehatan, catatan latihan rahasia, dan tanda tangan klien tidak ditampilkan.'),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-                child: const Text('Buka Absensi'),
-              ),
+        ProviderScope(
+          child: MaterialApp(
+            home: ManagerDashboardScreen(
+              repository: repo,
+              initialYear: 2026,
+              initialQuarter: 1,
             ),
           ),
         ),
       );
-
-      await tester.tap(find.text('Buka Absensi'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Detail Absensi • Klien Uji Rahasia'), findsOneWidget);
-      expect(find.text('Paket: Paket 10 Sesi'), findsOneWidget);
-      expect(find.text('Dihadiri: 4'), findsOneWidget);
-      expect(find.text('Sisa: 6'), findsOneWidget);
-      expect(find.textContaining('Catatan Privasi'), findsOneWidget);
+      // Pastikan layar utama dashboard ter-render
+      expect(find.text('Dashboard Manajemen PT'), findsOneWidget);
+      expect(find.text('Coach Faril'), findsOneWidget);
 
-      // Pastikan tidak ada field medis/tanda tangan/workout sensitif
+      // Buka bottom sheet "Detail PT & Klien"
+      final detailPtButton = find.widgetWithText(TextButton, 'Detail PT & Klien');
+      expect(detailPtButton, findsOneWidget);
+      await tester.ensureVisible(detailPtButton);
+      await tester.pumpAndSettle();
+      await tester.tap(detailPtButton);
+      await tester.pumpAndSettle();
+
+      // Bottom sheet terbuka: tampil nama PT dan daftar klien yang ditangani
+      expect(find.text('Daftar Klien yang Ditangani'), findsOneWidget);
+      expect(find.text('Klien Uji Rahasia'), findsOneWidget);
+      expect(
+        find.text('Paket 10 Sesi • 4 dari 10 sesi dihadiri'),
+        findsOneWidget,
+      );
+
+      // Tekan klien untuk membuka dialog absensi riil
+      await tester.tap(find.text('Klien Uji Rahasia'));
+      await tester.pumpAndSettle();
+
+      // Verifikasi dialog nyata "Detail Absensi Klien"
+      expect(find.text('Detail Absensi Klien'), findsOneWidget);
+      expect(find.text('Read-Only • Klien Uji Rahasia'), findsOneWidget);
+      expect(find.text('Paket 10 Sesi'), findsOneWidget);
+      expect(find.text('4 Sesi'), findsOneWidget);
+      expect(find.text('6 Sesi'), findsOneWidget);
+      expect(find.text('Riwayat Jadwal & Kehadiran Sesi'), findsOneWidget);
+      expect(find.text('Sesi 1'), findsOneWidget);
+      expect(find.text('Hadir'), findsOneWidget);
+      expect(find.text('Sesi 2'), findsOneWidget);
+      expect(find.text('Direncanakan'), findsOneWidget);
+      expect(
+        find.textContaining('Catatan Privasi: Asesmen kesehatan, catatan latihan rahasia, dan tanda tangan klien tidak ditampilkan.'),
+        findsOneWidget,
+      );
+
+      // Verifikasi tidak ada field medis, riwayat latihan privat, atau tanda tangan
       expect(find.text('Riwayat Medis Klien'), findsNothing);
       expect(find.text('Tanda Tangan Digital'), findsNothing);
       expect(find.text('Program Latihan Beban'), findsNothing);
+      expect(find.text('Asesmen Kesehatan'), findsNothing);
+      expect(find.text('Catatan Latihan'), findsNothing);
+
+      // Tutup dialog
+      await tester.tap(find.widgetWithText(FilledButton, 'Tutup'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Detail Absensi Klien'), findsNothing);
     });
   });
 }

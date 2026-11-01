@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../data/app_database.dart';
 import '../app.dart' show databaseProvider;
 
@@ -12,25 +13,23 @@ class ManagerClientAttendanceRecord {
     required this.sessionNumber,
     required this.scheduledTime,
     required this.status, // 'completed', 'scheduled', 'cancelled'
-    this.notes = '',
   });
 
   final int sessionNumber;
   final DateTime scheduledTime;
   final String status;
-  final String notes;
 
   String get statusLabel => switch (status.toLowerCase()) {
-        'completed' => 'Hadir',
-        'cancelled' => 'Dibatalkan',
-        _ => 'Direncanakan',
-      };
+    'completed' => 'Hadir',
+    'cancelled' => 'Dibatalkan',
+    _ => 'Direncanakan',
+  };
 
   Color get statusColor => switch (status.toLowerCase()) {
-        'completed' => const Color(0xFF10B981),
-        'cancelled' => const Color(0xFFEF4444),
-        _ => const Color(0xFF0088FF),
-      };
+    'completed' => const Color(0xFF10B981),
+    'cancelled' => const Color(0xFFEF4444),
+    _ => const Color(0xFF0088FF),
+  };
 }
 
 /// Model for client item in Manager PT Detail view.
@@ -101,18 +100,19 @@ class ManagerDashboardData {
   });
 
   const ManagerDashboardData.empty()
-      : totalActivePt = 0,
-        totalActiveClients = 0,
-        totalPackagesSold = 0,
-        totalSales = 0.0,
-        monthlySales = const [0.0, 0.0, 0.0],
-        trainers = const [];
+    : totalActivePt = 0,
+      totalActiveClients = 0,
+      totalPackagesSold = 0,
+      totalSales = 0.0,
+      monthlySales = const [0.0, 0.0, 0.0],
+      trainers = const [];
 
   final int totalActivePt;
   final int totalActiveClients;
   final int totalPackagesSold;
   final double totalSales;
-  final List<double> monthlySales; // 3 values for the 3 months of the selected quarter
+  final List<double>
+  monthlySales; // 3 values for the 3 months of the selected quarter
   final List<TrainerPerformance> trainers;
 
   bool get isEmpty =>
@@ -244,8 +244,9 @@ class SqliteManagerDashboardRepository implements ManagerDashboardRepository {
 
     final trainerPerformances = <TrainerPerformance>[];
     for (final trainer in trainers) {
-      final trainerClients =
-          allClients.where((c) => c.trainerId == trainer.id).toList();
+      final trainerClients = allClients
+          .where((c) => c.trainerId == trainer.id)
+          .toList();
       final trainerClientIds = trainerClients.map((c) => c.id).toSet();
 
       final activeTrainerClients = trainerClients.where((c) {
@@ -272,12 +273,18 @@ class SqliteManagerDashboardRepository implements ManagerDashboardRepository {
 
       final clientItems = <ManagerClientItem>[];
       for (final c in trainerClients) {
-        final clientPkgs = allPackages.where((p) => p.clientId == c.id).toList();
+        final clientPkgs = allPackages
+            .where((p) => p.clientId == c.id)
+            .toList();
         final clientPkgIds = clientPkgs.map((p) => p.id).toSet();
-        final activePkg = clientPkgs.where((p) => p.status == 'active').firstOrNull ?? clientPkgs.firstOrNull;
+        final activePkg =
+            clientPkgs.where((p) => p.status == 'active').firstOrNull ??
+            clientPkgs.firstOrNull;
         final totalSessions = activePkg?.totalSessions ?? 4;
         final packageName = 'Paket $totalSessions Sesi';
-        final cSessions = allSessions.where((s) => clientPkgIds.contains(s.packageId)).toList();
+        final cSessions = allSessions
+            .where((s) => clientPkgIds.contains(s.packageId))
+            .toList();
         final attended = cSessions.where((s) => s.status == 'completed').length;
         final remaining = (totalSessions - attended).clamp(0, totalSessions);
 
@@ -286,19 +293,20 @@ class SqliteManagerDashboardRepository implements ManagerDashboardRepository {
             sessionNumber: s.sessionNumber,
             scheduledTime: s.scheduledAt,
             status: s.status,
-            notes: s.notes,
           );
         }).toList();
 
-        clientItems.add(ManagerClientItem(
-          id: c.id.toString(),
-          name: c.name,
-          packageName: packageName,
-          totalSessions: totalSessions,
-          attendedSessions: attended,
-          remainingSessions: remaining,
-          attendanceRecords: records,
-        ));
+        clientItems.add(
+          ManagerClientItem(
+            id: c.id.toString(),
+            name: c.name,
+            packageName: packageName,
+            totalSessions: totalSessions,
+            attendedSessions: attended,
+            remainingSessions: remaining,
+            attendanceRecords: records,
+          ),
+        );
       }
 
       trainerPerformances.add(
@@ -332,205 +340,134 @@ class SqliteManagerDashboardRepository implements ManagerDashboardRepository {
   }
 }
 
-/// Cloud Firestore implementation for Manager Dashboard repository.
+/// Firestore implementation backed only by trusted manager read models.
+///
+/// The app never follows a `clients/*` reference for a manager. A privileged
+/// projection job materialises only operational attendance fields below:
+/// `manager_dashboard/{year}-Q{quarter}/trainers/{trainerId}/clients/{clientId}`.
 class FirestoreManagerDashboardRepository
     implements ManagerDashboardRepository {
   FirestoreManagerDashboardRepository(this.firestore);
   final FirebaseFirestore firestore;
+
+  static String periodId(int year, int quarter) => '$year-Q$quarter';
+
+  static DateTime _date(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed;
+    }
+    throw const FormatException('Tanggal absensi pada read model tidak valid.');
+  }
+
+  static int _int(Object? value) => (value as num?)?.toInt() ?? 0;
+  static double _double(Object? value) => (value as num?)?.toDouble() ?? 0;
+  static List<double> _monthlySales(Object? value) {
+    final values = value is List
+        ? value.map(_double).take(3).toList()
+        : <double>[];
+    return [...values, ...List<double>.filled(3 - values.length, 0)];
+  }
 
   @override
   Future<ManagerDashboardData> fetchDashboardData({
     required int year,
     required int quarter,
   }) async {
-    final startMonth = (quarter - 1) * 3 + 1;
-    final endMonth = startMonth + 2;
-
-    // 1. Fetch trainers
-    final usersSnap = await firestore
-        .collection('users')
-        .where('role', isEqualTo: 'trainer')
-        .get();
-
-    // 2. Fetch sales
-    final salesSnap = await firestore.collection('package_sales').get();
-    final allSales = salesSnap.docs.map((d) => d.data()).toList();
-
-    final quarterSales = allSales.where((s) {
-      final ts = s['timestamp'];
-      DateTime dt;
-      if (ts is Timestamp) {
-        dt = ts.toDate();
-      } else if (ts is String) {
-        dt = DateTime.tryParse(ts) ?? DateTime.now();
-      } else {
-        return false;
-      }
-      final isValid = s['status'] == null || s['status'] == 'valid';
-      return dt.year == year &&
-          dt.month >= startMonth &&
-          dt.month <= endMonth &&
-          isValid;
-    }).toList();
-
-    // 3. Fetch clients
-    final clientsSnap = await firestore.collection('clients').get();
-    final allClientDocs = clientsSnap.docs;
-
-    final gymMonthlySales = [0.0, 0.0, 0.0];
-    for (final s in quarterSales) {
-      final ts = s['timestamp'];
-      final dt = ts is Timestamp
-          ? ts.toDate()
-          : (DateTime.tryParse(ts?.toString() ?? '') ?? DateTime.now());
-      final mIdx = dt.month - startMonth;
-      if (mIdx >= 0 && mIdx < 3) {
-        final price = (s['price'] as num?)?.toDouble() ?? 0.0;
-        gymMonthlySales[mIdx] += price;
-      }
-    }
-    final totalGymSales = gymMonthlySales.reduce((a, b) => a + b);
-
+    final period = firestore
+        .collection('manager_dashboard')
+        .doc(periodId(year, quarter));
+    final summary = await period.get();
+    if (!summary.exists) return const ManagerDashboardData.empty();
+    final dashboard = summary.data()!;
+    final trainerSnapshots = await period.collection('trainers').get();
     final trainers = <TrainerPerformance>[];
-    int totalActiveClients = 0;
 
-    for (final userDoc in usersSnap.docs) {
-      final uData = userDoc.data();
-      final trainerId = userDoc.id;
-      final trainerName = (uData['displayName'] as String?)?.trim().isNotEmpty == true
-          ? (uData['displayName'] as String).trim()
-          : (uData['name'] as String?)?.trim().isNotEmpty == true
-              ? (uData['name'] as String).trim()
-              : 'PT';
-      final specialization =
-          uData['specialization'] as String? ?? 'Personal Trainer';
-      final photoUrl = uData['photoUrl'] as String?;
-      final status = uData['status'] as String? ?? 'active';
-
-      // Trainer's sales
-      final trainerSales =
-          quarterSales.where((s) => s['trainerId'] == trainerId).toList();
-      final trainerMonthlySales = [0.0, 0.0, 0.0];
-      for (final s in trainerSales) {
-        final ts = s['timestamp'];
-        final dt = ts is Timestamp
-            ? ts.toDate()
-            : (DateTime.tryParse(ts?.toString() ?? '') ?? DateTime.now());
-        final mIdx = dt.month - startMonth;
-        if (mIdx >= 0 && mIdx < 3) {
-          final price = (s['price'] as num?)?.toDouble() ?? 0.0;
-          trainerMonthlySales[mIdx] += price;
-        }
-      }
-      final trainerTotalSales = trainerMonthlySales.reduce((a, b) => a + b);
-
-      // Trainer's clients
-      final trainerClientDocs = allClientDocs.where((c) {
-        final assigned = c.data()['assignedTrainerIds'];
-        if (assigned is List) return assigned.contains(trainerId);
-        return false;
-      }).toList();
-
-      final clientItems = <ManagerClientItem>[];
-      for (final cDoc in trainerClientDocs) {
-        final cData = cDoc.data();
-        final cName = cData['name'] as String? ?? 'Klien';
-
-        // Read packages
-        final pkgsSnap = await cDoc.reference.collection('packages').get();
-        final activePkg = pkgsSnap.docs
-            .where((p) => p.data()['status'] == 'active')
-            .firstOrNull;
-        final totalSessions =
-            (activePkg?.data()['totalSessions'] as num?)?.toInt() ?? 4;
-        final packageName = activePkg != null
-            ? 'Paket $totalSessions Sesi'
-            : 'Paket Selesai';
-
-        // Read sessions
-        final sessSnap = await cDoc.reference
-            .collection('sessions')
+    for (final trainerSnapshot in trainerSnapshots.docs) {
+      final trainer = trainerSnapshot.data();
+      final clientSnapshots = await trainerSnapshot.reference
+          .collection('clients')
+          .get();
+      final clients = <ManagerClientItem>[];
+      for (final clientSnapshot in clientSnapshots.docs) {
+        final client = clientSnapshot.data();
+        final attendanceSnapshots = await clientSnapshot.reference
+            .collection('attendance')
             .orderBy('sessionNumber')
             .get();
-        final records = <ManagerClientAttendanceRecord>[];
-        int completedCount = 0;
-
-        for (final sDoc in sessSnap.docs) {
-          final sData = sDoc.data();
-          final sNum = (sData['sessionNumber'] as num?)?.toInt() ?? 1;
-          final sStatus = sData['status'] as String? ?? 'scheduled';
-          final sTime = sData['scheduledTime'] is Timestamp
-              ? (sData['scheduledTime'] as Timestamp).toDate()
-              : (DateTime.tryParse(sData['scheduledTime']?.toString() ?? '') ??
-                  DateTime.now());
-          final sNotes = sData['notes'] as String? ?? '';
-
-          if (sStatus == 'completed') completedCount++;
-          records.add(ManagerClientAttendanceRecord(
-            sessionNumber: sNum,
-            scheduledTime: sTime,
-            status: sStatus,
-            notes: sNotes,
-          ));
-        }
-
-        final remaining =
-            (totalSessions - completedCount).clamp(0, totalSessions);
-        clientItems.add(ManagerClientItem(
-          id: cDoc.id,
-          name: cName,
-          packageName: packageName,
-          totalSessions: totalSessions,
-          attendedSessions: completedCount,
-          remainingSessions: remaining,
-          attendanceRecords: records,
-        ));
+        final attendance = attendanceSnapshots.docs
+            .map((recordSnapshot) {
+              final record = recordSnapshot.data();
+              return ManagerClientAttendanceRecord(
+                sessionNumber: _int(record['sessionNumber']),
+                scheduledTime: _date(record['scheduledTime']),
+                status: record['status'] as String? ?? 'scheduled',
+              );
+            })
+            .toList(growable: false);
+        clients.add(
+          ManagerClientItem(
+            id: clientSnapshot.id,
+            name: client['name'] as String? ?? 'Klien',
+            packageName: client['packageName'] as String? ?? 'Paket PT',
+            totalSessions: _int(client['totalSessions']),
+            attendedSessions: _int(client['attendedSessions']),
+            remainingSessions: _int(client['remainingSessions']),
+            attendanceRecords: attendance,
+          ),
+        );
       }
-
-      totalActiveClients += trainerClientDocs.length;
-      trainers.add(TrainerPerformance(
-        id: trainerId,
-        name: trainerName,
-        specialization: specialization,
-        activeClients: trainerClientDocs.length,
-        packagesSold: trainerSales.length,
-        totalSales: trainerTotalSales,
-        photoUrl: photoUrl,
-        status: status,
-        quarterlyTarget: 5000000.0,
-        monthlySales: trainerMonthlySales,
-        clients: clientItems,
-      ));
+      trainers.add(
+        TrainerPerformance(
+          id: trainerSnapshot.id,
+          name: trainer['name'] as String? ?? 'PT',
+          specialization:
+              trainer['specialization'] as String? ?? 'Personal Trainer',
+          activeClients: _int(trainer['activeClients']),
+          packagesSold: _int(trainer['packagesSold']),
+          totalSales: _double(trainer['totalSales']),
+          photoUrl: trainer['photoUrl'] as String?,
+          status: trainer['status'] as String? ?? 'active',
+          quarterlyTarget: _double(trainer['quarterlyTarget']) == 0
+              ? 5000000.0
+              : _double(trainer['quarterlyTarget']),
+          monthlySales: _monthlySales(trainer['monthlySales']),
+          clients: clients,
+        ),
+      );
     }
 
     return ManagerDashboardData(
-      totalActivePt: trainers.where((t) => t.status == 'active').length,
-      totalActiveClients: totalActiveClients,
-      totalPackagesSold: quarterSales.length,
-      totalSales: totalGymSales,
-      monthlySales: gymMonthlySales,
+      totalActivePt: _int(dashboard['totalActivePt']),
+      totalActiveClients: _int(dashboard['totalActiveClients']),
+      totalPackagesSold: _int(dashboard['totalPackagesSold']),
+      totalSales: _double(dashboard['totalSales']),
+      monthlySales: _monthlySales(dashboard['monthlySales']),
       trainers: trainers,
     );
   }
 }
 
 /// Provider for Manager Dashboard Repository.
-final managerDashboardRepositoryProvider =
-    Provider<ManagerDashboardRepository>((ref) {
-  if (Firebase.apps.isNotEmpty) {
-    try {
-      return FirestoreManagerDashboardRepository(FirebaseFirestore.instance);
-    } catch (_) {
-      // Fallback if firestore instance unavailable
+final managerDashboardRepositoryProvider = Provider<ManagerDashboardRepository>(
+  (ref) {
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        return FirestoreManagerDashboardRepository(FirebaseFirestore.instance);
+      } catch (_) {
+        // Fallback if firestore instance unavailable
+      }
     }
-  }
-  try {
-    final db = ref.watch(databaseProvider);
-    return SqliteManagerDashboardRepository(db);
-  } catch (_) {
-    return InMemoryManagerDashboardRepository();
-  }
-});
+    try {
+      final db = ref.watch(databaseProvider);
+      return SqliteManagerDashboardRepository(db);
+    } catch (_) {
+      return InMemoryManagerDashboardRepository();
+    }
+  },
+);
 
 /// Currency formatter helper for Rupiah.
 String formatRupiah(num amount) {
@@ -905,10 +842,7 @@ class _ManagerDashboardScreenState
             const SizedBox(height: 2),
             Text(
               subtitle,
-              style: const TextStyle(
-                fontSize: 10,
-                color: Color(0xFF94A3B8),
-              ),
+              style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
             ),
           ],
           const SizedBox(height: 4),
@@ -933,7 +867,10 @@ class _ManagerDashboardScreenState
     final achievementPercentage = _quarterlyTarget > 0
         ? (data.totalSales / _quarterlyTarget) * 100
         : 0.0;
-    final remainingAmount = (_quarterlyTarget - data.totalSales).clamp(0.0, double.infinity);
+    final remainingAmount = (_quarterlyTarget - data.totalSales).clamp(
+      0.0,
+      double.infinity,
+    );
     final progress = _quarterlyTarget > 0
         ? (data.totalSales / _quarterlyTarget).clamp(0.0, 1.0)
         : 0.0;
@@ -1014,10 +951,7 @@ class _ManagerDashboardScreenState
             const SizedBox(height: 10),
             Text(
               'Sisa Menuju Target: ${formatRupiah(remainingAmount)}',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF64748B),
-              ),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
             ),
           ],
         ),
@@ -1214,15 +1148,17 @@ class _ManagerDashboardScreenState
                             CircleAvatar(
                               radius: 20,
                               backgroundColor: const Color(0xFFD4ECFF),
-                              backgroundImage: pt.photoUrl != null &&
-                                      pt.photoUrl!.isNotEmpty
+                              backgroundImage:
+                                  pt.photoUrl != null && pt.photoUrl!.isNotEmpty
                                   ? NetworkImage(pt.photoUrl!)
                                   : null,
-                              child: (pt.photoUrl == null ||
-                                      pt.photoUrl!.isEmpty)
+                              child:
+                                  (pt.photoUrl == null || pt.photoUrl!.isEmpty)
                                   ? Text(
                                       pt.name.isNotEmpty
-                                          ? pt.name.substring(0, 1).toUpperCase()
+                                          ? pt.name
+                                                .substring(0, 1)
+                                                .toUpperCase()
                                           : 'P',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.bold,
@@ -1257,8 +1193,9 @@ class _ManagerDashboardScreenState
                                           color: pt.status == 'active'
                                               ? const Color(0xFFDCFCE7)
                                               : const Color(0xFFF1F5F9),
-                                          borderRadius:
-                                              BorderRadius.circular(4),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
                                         ),
                                         child: Text(
                                           pt.status == 'active'
@@ -1366,8 +1303,10 @@ class _ManagerDashboardScreenState
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
-                            value: (pt.totalSales / pt.quarterlyTarget)
-                                .clamp(0.0, 1.0),
+                            value: (pt.totalSales / pt.quarterlyTarget).clamp(
+                              0.0,
+                              1.0,
+                            ),
                             minHeight: 6,
                             backgroundColor: const Color(0xFFE2E8F0),
                             valueColor: AlwaysStoppedAnimation<Color>(
@@ -1408,8 +1347,7 @@ class _ManagerDashboardScreenState
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              onPressed: () =>
-                                  _showTrainerDetail(context, pt),
+                              onPressed: () => _showTrainerDetail(context, pt),
                             ),
                           ],
                         ),
@@ -1452,15 +1390,17 @@ class _ManagerDashboardScreenState
                     ),
                   ),
                   Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     child: Row(
                       children: [
                         CircleAvatar(
                           radius: 24,
                           backgroundColor: const Color(0xFFD4ECFF),
-                          backgroundImage: pt.photoUrl != null &&
-                                  pt.photoUrl!.isNotEmpty
+                          backgroundImage:
+                              pt.photoUrl != null && pt.photoUrl!.isNotEmpty
                               ? NetworkImage(pt.photoUrl!)
                               : null,
                           child: (pt.photoUrl == null || pt.photoUrl!.isEmpty)
@@ -1547,8 +1487,7 @@ class _ManagerDashboardScreenState
                                         color: pt.isTargetAchieved
                                             ? const Color(0xFFDCFCE7)
                                             : const Color(0xFFFEF3C7),
-                                        borderRadius:
-                                            BorderRadius.circular(6),
+                                        borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: Text(
                                         pt.isTargetAchieved
@@ -1709,8 +1648,10 @@ class _ManagerDashboardScreenState
                                     size: 18,
                                     color: Color(0xFF0088FF),
                                   ),
-                                  onTap: () =>
-                                      _showClientAttendanceDetail(context, client),
+                                  onTap: () => _showClientAttendanceDetail(
+                                    context,
+                                    client,
+                                  ),
                                 ),
                               );
                             },
@@ -1728,14 +1669,17 @@ class _ManagerDashboardScreenState
   }
 
   void _showClientAttendanceDetail(
-      BuildContext context, ManagerClientItem client) {
+    BuildContext context,
+    ManagerClientItem client,
+  ) {
     showDialog<void>(
       context: context,
       builder: (ctx) {
         return AlertDialog(
           scrollable: true,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: Row(
             children: [
               const Icon(Icons.event_available, color: Color(0xFF0088FF)),
@@ -1746,8 +1690,10 @@ class _ManagerDashboardScreenState
                   children: [
                     const Text(
                       'Detail Absensi Klien',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     Text(
                       'Read-Only • ${client.name}',
@@ -1973,10 +1919,7 @@ class _ManagerDashboardScreenState
           Text(
             'Belum ada data kinerja PT pada periode ini.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              color: Color(0xFF64748B),
-            ),
+            style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
           ),
         ],
       ),

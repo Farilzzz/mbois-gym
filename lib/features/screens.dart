@@ -262,45 +262,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   isLoading: _loading,
                   onPressed: _loading ? null : _submit,
                 ),
-                const SizedBox(height: 16),
-                Center(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.history_edu_outlined, size: 18),
-                    label: const Text(
-                      'Buka Riwayat & Arsip Latihan',
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: isDark
-                          ? Colors.white70
-                          : AppColors.primaryRoyalBlue,
-                    ),
-                    onPressed: () => context.push('/legacy-archive'),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Belum punya akun? ',
-                      style: TextStyle(
-                        color: isDark ? Colors.white60 : AppColors.textMuted,
-                        fontSize: 14,
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () => context.push('/setup'),
-                      child: const Text(
-                        'Informasi Akun',
-                        style: TextStyle(
-                          color: AppColors.vibrantBlue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
@@ -308,30 +269,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ),
     );
   }
-}
-
-class SetupScreen extends StatelessWidget {
-  const SetupScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Informasi Akun')),
-    body: SafeArea(child: SingleChildScrollView(
-      padding: const EdgeInsets.all(28),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Icon(Icons.admin_panel_settings_outlined,
-          size: 64, color: AppColors.vibrantBlue),
-        const SizedBox(height: 24),
-        const Text('Akun disediakan administrator',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
-        const Text('Hubungi admin Mbois Gym untuk provisioning akun trainer atau manager. '
-          'Pendaftaran publik tidak tersedia. Peran dan status akun hanya dikelola admin.'),
-        const SizedBox(height: 24),
-        AppPillButton(text: 'Kembali ke Login', onPressed: () => context.go('/login')),
-      ]),
-    )),
-  );
 }
 
 class DashboardScreen extends ConsumerWidget {
@@ -5832,24 +5769,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: AppRadius.medium,
-                    ),
-                    child: ListTile(
-                      leading: const Icon(
-                        Icons.archive_outlined,
-                        color: AppColors.vibrantBlue,
-                      ),
-                      title: const Text('Riwayat & Arsip Latihan'),
-                      subtitle: const Text(
-                        'Catatan riwayat latihan dan arsip sesi',
-                      ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => context.push('/legacy-archive'),
-                    ),
-                  ),
                   const SizedBox(height: 20),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.logout),
@@ -6347,122 +6266,3 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 }
 
 typedef SettingsScreen = ProfileScreen;
-
-class LegacyArchiveScreen extends ConsumerWidget {
-  const LegacyArchiveScreen({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final db = ref.watch(databaseProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF121212)
-          : const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text('Riwayat & Arsip Latihan'),
-        backgroundColor: AppColors.primaryRoyalBlue,
-        foregroundColor: Colors.white,
-      ),
-      body: FutureBuilder(
-        future: Future.wait([
-          db.select(db.clients).get(),
-          db.select(db.ptPackages).get(),
-          db.select(db.sessions).get(),
-          db.select(db.trainers).get(),
-        ]),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final clients = snapshot.data![0] as List<Client>;
-          final packages = snapshot.data![1] as List<PtPackage>;
-          final sessions = snapshot.data![2] as List<Session>;
-          final trainers = snapshot.data![3] as List<Trainer>;
-
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: AppRadius.medium,
-                  border: Border.all(color: Colors.amber.shade300),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.shield_outlined, color: Colors.amber.shade900),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'ARSIP RIWAYAT LATIHAN • Catatan historis latihan tersimpan aman sebagai arsip data dan referensi rekam jejak.',
-                        style: TextStyle(
-                          color: Colors.amber.shade900,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                shape: RoundedRectangleBorder(borderRadius: AppRadius.medium),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Ringkasan Data Riwayat',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text('• Total Klien Terdaftar: ${clients.length} klien'),
-                      Text('• Total Paket PT: ${packages.length} paket'),
-                      Text('• Total Sesi Absensi: ${sessions.length} sesi'),
-                      Text('• Akun Coach Terdaftar: ${trainers.length} akun'),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Daftar Klien (Arsip Historis)',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              if (clients.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('Belum ada data klien pada arsip riwayat.'),
-                )
-              else
-                for (final c in clients)
-                  Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.person)),
-                      title: Text(c.name),
-                      subtitle: Text(
-                        'ID Lokal: ${c.id} • Usia: ${c.age} • Kontak: ${c.contact.isNotEmpty ? c.contact : "-"}',
-                      ),
-                      trailing: TextButton(
-                        onPressed: () => context.push('/clients/${c.id}'),
-                        child: const Text('Buka Detail'),
-                      ),
-                    ),
-                  ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}

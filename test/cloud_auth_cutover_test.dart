@@ -346,7 +346,9 @@ void main() {
         expect(find.text('Password'), findsOneWidget);
         expect(find.text('Log In'), findsOneWidget);
         expect(find.text('Lupa Password?'), findsOneWidget);
-        expect(find.textContaining('Arsip'), findsOneWidget);
+        expect(find.textContaining('Arsip'), findsNothing);
+        expect(find.text('Belum punya akun? '), findsNothing);
+        expect(find.text('Informasi Akun'), findsNothing);
 
         // Attempt inactive login
         await tester.enterText(
@@ -391,7 +393,9 @@ void main() {
         expect(find.text('pt.active@mboisgym.com'), findsOneWidget);
         expect(find.text('08123456789'), findsOneWidget);
         expect(find.text('EDIT PROFIL'), findsOneWidget);
-        expect(find.textContaining('Arsip'), findsOneWidget);
+        expect(find.textContaining('Arsip'), findsNothing);
+        expect(find.text('Belum punya akun? '), findsNothing);
+        expect(find.text('Informasi Akun'), findsNothing);
 
         // Scroll to logout
         await tester.scrollUntilVisible(find.text('LOGOUT COACH'), 300);

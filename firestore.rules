@@ -23,10 +23,10 @@ service cloud.firestore {
       return activeTrainer()
         && request.auth.uid in get(/databases/$(database)/documents/clients/$(clientId)).data.assignedTrainerIds;
     }
-    function clientAccess(clientId) { return activeManager() || assigned(clientId); }
+    function clientAccess(clientId) { return assigned(clientId); }
     function clientResourceAccess() {
       // Queries for trainers must constrain assignedTrainerIds with array-contains UID.
-      return activeManager() || (activeTrainer() && request.auth.uid in resource.data.assignedTrainerIds);
+      return activeTrainer() && request.auth.uid in resource.data.assignedTrainerIds;
     }
     function noteSchema(data) {
       return data.keys().hasOnly(['note', 'createdAt', 'updatedAt'])
@@ -61,7 +61,7 @@ service cloud.firestore {
         && request.resource.data.name is string
         && validAssignment(request.resource.data.assignedTrainerIds)
         && (activeManager() || (activeTrainer() && request.resource.data.assignedTrainerIds == [request.auth.uid]));
-      allow update: if clientAccess(clientId)
+      allow update: if (activeManager() || clientAccess(clientId))
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignedTrainerIds'])
           || (activeManager() && validAssignment(request.resource.data.assignedTrainerIds)));
       allow delete: if activeManager() || assigned(clientId);
@@ -126,6 +126,23 @@ service cloud.firestore {
           && request.resource.data.fromTrainerId is string
           && validTrainer(request.resource.data.toTrainerId);
         allow update, delete: if false;
+      }
+    }
+    // Trusted backend projection. Client SDKs can only read it as active managers.
+    match /manager_dashboard/{periodId} {
+      allow read: if activeManager();
+      allow write: if false;
+      match /trainers/{trainerId} {
+        allow read: if activeManager();
+        allow write: if false;
+        match /clients/{clientId} {
+          allow read: if activeManager();
+          allow write: if false;
+          match /attendance/{attendanceId} {
+            allow read: if activeManager();
+            allow write: if false;
+          }
+        }
       }
     }
     match /pt_packages/{packageId} { allow read, write: if false; }

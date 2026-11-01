@@ -9,17 +9,6 @@ import 'package:mbois_gym_pt/features/screens.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('setup only explains admin provisioning without public registration', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: SetupScreen())),
-    );
-    expect(find.textContaining('administrator'), findsOneWidget);
-    expect(find.byType(TextField), findsNothing);
-    expect(find.text('Sign Up'), findsNothing);
-  });
-
   testWidgets(
     'Post PT requires confirmation before finalization and displays saved evaluation after closure',
     (tester) async {
