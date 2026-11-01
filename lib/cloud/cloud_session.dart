@@ -1,5 +1,15 @@
 import 'dart:async';
 
+enum CloudRole {
+  trainer, manager;
+
+  static CloudRole? parse(Object? value) => switch (value) {
+    'trainer' => CloudRole.trainer,
+    'manager' => CloudRole.manager,
+    _ => null,
+  };
+}
+
 /// Cloud session and profile representing authenticated Firebase Personal Trainer.
 class CloudProfile {
   const CloudProfile(
@@ -9,13 +19,33 @@ class CloudProfile {
     this.email = '',
     this.phone = '',
     this.role = 'trainer',
-  });
+    this.heightCm,
+    this.weightKg,
+    this.specialization = '',
+    this.experienceYears,
+    this.certifications = '',
+    this.bio = '',
+    this.photoUrl,
+    String? status,
+  }) : status = status ?? (active ? 'active' : 'inactive');
   final String uid;
   final String name;
   final bool active;
   final String email;
   final String phone;
   final String role;
+  final double? heightCm;
+  final double? weightKg;
+  final String specialization;
+  final int? experienceYears;
+  final String certifications;
+  final String bio;
+  final String? photoUrl;
+  final String status;
+  CloudRole? get typedRole => CloudRole.parse(role);
+  bool get isManager => typedRole == CloudRole.manager;
+  bool get isTrainer => typedRole == CloudRole.trainer;
+  bool get canAccess => active && typedRole != null;
 }
 
 class CloudClient {
@@ -29,7 +59,6 @@ abstract interface class CloudGateway {
   String? get currentUid;
   Future<CloudProfile?> profile(String uid);
   Future<void> signIn(String email, String password);
-  Future<void> signUp(String email, String password, String name);
   Future<void> signOut();
   Future<void> resetPassword(String email);
   Future<void> changePassword(String oldPassword, String newPassword);
@@ -38,6 +67,13 @@ abstract interface class CloudGateway {
     required String uid,
     required String displayName,
     required String phone,
+    double? heightCm,
+    double? weightKg,
+    String? specialization,
+    int? experienceYears,
+    String? certifications,
+    String? bio,
+    String? photoUrl,
   });
 }
 
@@ -52,7 +88,7 @@ class CloudSession {
       try {
         final found = await gateway.profile(uid);
         if (generation == _generation) {
-          profile = found != null && found.active ? found : null;
+          profile = found != null && found.canAccess ? found : null;
           onChanged?.call();
         }
       } catch (_) {

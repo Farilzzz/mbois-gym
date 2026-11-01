@@ -18,10 +18,6 @@ class MockCloudGateway implements CloudGateway {
   String? lastResetEmail;
   bool updateProfileCalled = false;
   @override
-  Future<void> signUp(String email, String password, String name) async {
-    // Implementasi dummy untuk melewati error testing
-  }
-  @override
   Stream<String?> get authChanges => _authController.stream;
 
   @override
@@ -74,6 +70,13 @@ class MockCloudGateway implements CloudGateway {
     required String uid,
     required String displayName,
     required String phone,
+    double? heightCm,
+    double? weightKg,
+    String? specialization,
+    int? experienceYears,
+    String? certifications,
+    String? bio,
+    String? photoUrl,
   }) async {
     final existing = userProfiles[uid];
     if (existing == null) throw Exception('Profile not found');
@@ -85,6 +88,14 @@ class MockCloudGateway implements CloudGateway {
       email: existing.email,
       phone: phone,
       role: existing.role,
+      status: existing.status,
+      heightCm: heightCm ?? existing.heightCm,
+      weightKg: weightKg ?? existing.weightKg,
+      specialization: specialization ?? existing.specialization,
+      experienceYears: experienceYears ?? existing.experienceYears,
+      certifications: certifications ?? existing.certifications,
+      bio: bio ?? existing.bio,
+      photoUrl: photoUrl ?? existing.photoUrl,
     );
   }
 
@@ -125,6 +136,36 @@ void main() {
   });
 
   group('CloudAuthNotifier Unit Tests', () {
+    test('active manager can login without trainer-only rejection', () async {
+      gateway.credentials['manager@mboisgym.com'] = 'Password123!';
+      gateway.userProfiles['manager'] = const CloudProfile(
+        'manager', 'Manager', true,
+        email: 'manager@mboisgym.com', role: 'manager',
+      );
+      final container = ProviderContainer(overrides: [
+        cloudGatewayProvider.overrideWith((ref) => gateway),
+      ]);
+      addTearDown(container.dispose);
+      final error = await container.read(cloudAuthProvider.notifier)
+          .login('manager@mboisgym.com', 'Password123!');
+      expect(error, isNull);
+      expect(container.read(cloudAuthProvider).value?.role, 'manager');
+    });
+
+    test('unknown active role cannot authenticate', () async {
+      gateway.credentials['other@mboisgym.com'] = 'Password123!';
+      gateway.userProfiles['other'] = const CloudProfile(
+        'other', 'Other', true, email: 'other@mboisgym.com', role: 'owner',
+      );
+      final container = ProviderContainer(overrides: [
+        cloudGatewayProvider.overrideWith((ref) => gateway),
+      ]);
+      addTearDown(container.dispose);
+      expect(await container.read(cloudAuthProvider.notifier)
+          .login('other@mboisgym.com', 'Password123!'), isNotNull);
+      expect(gateway.currentUid, isNull);
+    });
+
     test('active PT login succeeds and sets CloudProfile state', () async {
       final container = ProviderContainer(
         overrides: [cloudGatewayProvider.overrideWith((ref) => gateway)],
@@ -213,6 +254,52 @@ void main() {
       await notifier.logout();
       expect(container.read(cloudAuthProvider).value, isNull);
       expect(gateway.currentUid, isNull);
+    });
+
+    test('profile supports optional professional fields without losing admin fields', () {
+      const legacy = CloudProfile('legacy', 'Coach', true);
+      expect(legacy.heightCm, isNull);
+      expect(legacy.specialization, isEmpty);
+      const rich = CloudProfile('rich', 'Coach', true,
+        heightCm: 178, weightKg: 72.5, specialization: 'Strength',
+        experienceYears: 5, certifications: 'NASM', bio: 'Coach',
+        photoUrl: 'https://example.org/photo.jpg', status: 'active',
+        role: 'manager');
+      expect(rich.weightKg, 72.5);
+      expect(rich.typedRole, CloudRole.manager);
+      expect(rich.status, 'active');
+    });
+
+    test('updateProfile allows editing personal professional fields but keeps administrative status and role unchanged', () async {
+      final container = ProviderContainer(
+        overrides: [cloudGatewayProvider.overrideWith((ref) => gateway)],
+      );
+      addTearDown(container.dispose);
+
+      final notifier = container.read(cloudAuthProvider.notifier);
+      await notifier.login('pt.active@mboisgym.com', 'Password123!');
+
+      final err = await notifier.updateProfile(
+        displayName: 'Coach Ahmad Faril Pro',
+        phone: '08555123456',
+        heightCm: 180,
+        weightKg: 75,
+        specialization: 'Hypertrophy & Fat Loss',
+        experienceYears: 6,
+        certifications: 'APKI Certified',
+        bio: 'Dedicated personal trainer.',
+      );
+      expect(err, isNull);
+      final state = container.read(cloudAuthProvider).value;
+      expect(state?.name, 'Coach Ahmad Faril Pro');
+      expect(state?.heightCm, 180);
+      expect(state?.weightKg, 75);
+      expect(state?.specialization, 'Hypertrophy & Fat Loss');
+      expect(state?.experienceYears, 6);
+      expect(state?.certifications, 'APKI Certified');
+      expect(state?.bio, 'Dedicated personal trainer.');
+      expect(state?.role, 'trainer');
+      expect(state?.status, 'active');
     });
 
     test('updateProfile updates Firestore profile fields', () async {
@@ -309,6 +396,72 @@ void main() {
         // Scroll to logout
         await tester.scrollUntilVisible(find.text('LOGOUT COACH'), 300);
         expect(find.text('LOGOUT COACH'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'ProfileScreen displays professional fields and keeps role/status read-only in edit dialog',
+      (tester) async {
+        gateway.credentials['pt.pro@mboisgym.com'] = 'Password123!';
+        gateway.userProfiles['pt_pro'] = const CloudProfile(
+          'pt_pro',
+          'Coach Professional',
+          true,
+          email: 'pt.pro@mboisgym.com',
+          phone: '08111222333',
+          role: 'trainer',
+          status: 'active',
+          heightCm: 175,
+          weightKg: 70,
+          specialization: 'Bodybuilding',
+          experienceYears: 4,
+          certifications: 'CSCS',
+          bio: 'Passionate about strength.',
+        );
+
+        final container = ProviderContainer(
+          overrides: [cloudGatewayProvider.overrideWith((ref) => gateway)],
+        );
+        addTearDown(container.dispose);
+
+        await container
+            .read(cloudAuthProvider.notifier)
+            .login('pt.pro@mboisgym.com', 'Password123!');
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const MaterialApp(home: ProfileScreen()),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Verify professional fields displayed
+        expect(find.textContaining('Bodybuilding'), findsOneWidget);
+        expect(find.textContaining('175'), findsOneWidget);
+        expect(find.textContaining('70'), findsOneWidget);
+        expect(find.textContaining('CSCS'), findsOneWidget);
+
+        // Tap EDIT PROFIL
+        await tester.ensureVisible(find.text('EDIT PROFIL'));
+        await tester.tap(find.text('EDIT PROFIL'));
+        await tester.pumpAndSettle();
+
+        // Check dialog contains editable personal fields and read-only administrative indicators
+        expect(find.text('Spesialisasi'), findsOneWidget);
+        expect(find.text('Tinggi Badan (cm)'), findsOneWidget);
+        expect(find.text('Berat Badan (kg)'), findsOneWidget);
+        expect(find.textContaining('Peran Administratif'), findsOneWidget);
+        expect(find.textContaining('Status Akun'), findsOneWidget);
+
+        // Enter new specialization and bio
+        final specFinder = find.widgetWithText(TextFormField, 'Spesialisasi');
+        await tester.enterText(specFinder, 'Powerlifting & Mobility');
+
+        await tester.tap(find.text('Simpan Perubahan'));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Powerlifting & Mobility'), findsOneWidget);
       },
     );
   });

@@ -19,7 +19,7 @@ class FirebaseCloudGateway implements CloudGateway {
   Future<CloudProfile?> profile(String uid) async {
     final snapshot = await firestore.collection('users').doc(uid).get();
     final data = snapshot.data();
-    if (!snapshot.exists || data == null || data['role'] != 'trainer') {
+    if (!snapshot.exists || data == null || CloudRole.parse(data['role']) == null) {
       return null;
     }
     final displayName =
@@ -52,10 +52,24 @@ class FirebaseCloudGateway implements CloudGateway {
     required String uid,
     required String displayName,
     required String phone,
+    double? heightCm,
+    double? weightKg,
+    String? specialization,
+    int? experienceYears,
+    String? certifications,
+    String? bio,
+    String? photoUrl,
   }) async {
     await firestore.collection('users').doc(uid).update({
       'displayName': displayName.trim(),
       'phone': phone.trim(),
+      'heightCm': ?heightCm,
+      'weightKg': ?weightKg,
+      'specialization': ?specialization,
+      'experienceYears': ?experienceYears,
+      'certifications': ?certifications,
+      'bio': ?bio,
+      'photoUrl': ?photoUrl,
     });
   }
 
@@ -63,23 +77,6 @@ class FirebaseCloudGateway implements CloudGateway {
   Future<void> signIn(String email, String password) =>
       auth.signInWithEmailAndPassword(email: email.trim(), password: password);
 
-  @override
-  Future<void> signUp(String email, String password, String name) async {
-    final cred = await auth.createUserWithEmailAndPassword(
-        email: email.trim(), password: password);
-    
-    final uid = cred.user?.uid;
-    if (uid != null) {
-      await firestore.collection('users').doc(uid).set({
-        'name': name.trim(),
-        'displayName': name.trim(),
-        'email': email.trim(),
-        'role': 'trainer',
-        'status': 'active',
-        'phone': '',
-      });
-    }
-  }
 
   @override
   Future<void> signOut() => auth.signOut();

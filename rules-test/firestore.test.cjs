@@ -113,20 +113,31 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
     await assertFails(updateDoc(doc(dbFor('pt2'), 'clients/c1'), { name: 'Intruder Update' }));
     await assertFails(deleteDoc(doc(dbFor('pt2'), 'clients/c1')));
   });
-  for (const sub of descendants) {
-    it(`${sub}: assigned trainer can create, update, delete, while outsiders cannot`, async () => {
-      const db1 = dbFor('pt1');
-      const db2 = dbFor('pt2');
-      // Assigned PT1 succeeds
-      await assertSucceeds(setDoc(doc(db1, `clients/c1/${sub}/new_item`), { note: 'Created by PT1', createdAt: new Date() }));
-      await assertSucceeds(updateDoc(doc(db1, `clients/c1/${sub}/old`), { note: 'Updated by PT1' }));
-      await assertSucceeds(deleteDoc(doc(db1, `clients/c1/${sub}/old`)));
-      // Outsider PT2 fails
-      await assertFails(setDoc(doc(db2, `clients/c1/${sub}/intruder`), { note: 'Intrusion' }));
-      await assertFails(updateDoc(doc(db2, `clients/c1/${sub}/new_item`), { note: 'Tampered' }));
-      await assertFails(deleteDoc(doc(db2, `clients/c1/${sub}/new_item`)));
+  it('assigned trainer can schedule and cancel a session but cannot complete it', async () => {
+    const path = 'clients/c1/sessions/new_item';
+    await assertSucceeds(setDoc(doc(dbFor('pt1'), path), { packageIntId: 1, sessionNumber: 1, scheduledTime: new Date(), status: 'scheduled' }));
+    await assertSucceeds(updateDoc(doc(dbFor('pt1'), path), { status: 'cancelled' }));
+    await assertFails(updateDoc(doc(dbFor('pt1'), path), { status: 'completed' }));
+    await assertFails(setDoc(doc(dbFor('pt2'), 'clients/c1/sessions/intruder'), { packageIntId: 1, sessionNumber: 1, scheduledTime: new Date(), status: 'scheduled' }));
+  });
+  it('trainer can create valid package; completedCount and destructive operations fail closed', async () => {
+    const path = 'clients/c1/packages/new_item';
+    await assertSucceeds(setDoc(doc(dbFor('pt1'), path), { totalSessions: 12, completedCount: 0, status: 'active' }));
+    await assertFails(updateDoc(doc(dbFor('pt1'), path), { completedCount: 1 }));
+    await assertFails(deleteDoc(doc(dbFor('pt1'), path)));
+  });
+  for (const sub of ['workouts', 'evaluations', 'assessments', 'progress_measurements']) {
+    it(`${sub}: assigned trainer writes note only; outsider and malformed payload denied`, async () => {
+      const path = `clients/c1/${sub}/new_item`;
+      await assertSucceeds(setDoc(doc(dbFor('pt1'), path), { note: 'Created by PT1', createdAt: new Date() }));
+      await assertSucceeds(updateDoc(doc(dbFor('pt1'), path), { note: 'Edited' }));
+      await assertFails(setDoc(doc(dbFor('pt1'), `clients/c1/${sub}/bad`), { role: 'manager' }));
+      await assertFails(setDoc(doc(dbFor('pt2'), `clients/c1/${sub}/intruder`), { note: 'Intrusion' }));
     });
   }
+  it('assignment history is manager-only and immutable to trainers', async () => {
+    await assertFails(setDoc(doc(dbFor('pt1'), 'clients/c1/assignment_history/new'), { fromTrainerId: 'pt1', toTrainerId: 'pt2' }));
+  });
   for (const path of ['pt_packages/old', 'workout_logs/old', 'exercise_catalog/old', 'migration_imports/old']) {
     it(`${path}: un-namespaced root operational writes strictly denied`, async () => {
       const db = dbFor('pt1');
@@ -135,6 +146,54 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
       await assertFails(deleteDoc(doc(db, path)));
     });
   }
+  it('manager reads trainer profiles and operational clients; trainer cannot read others', async () => {
+    await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' }));
+    await assertSucceeds(read('manager', 'users/pt1'));
+    await assertSucceeds(getDocs(collection(dbFor('manager'), 'users')));
+    await assertSucceeds(read('manager', 'clients/c2'));
+    await assertSucceeds(read('manager', 'clients/c2/sessions/old'));
+    await assertFails(read('pt1', 'users/pt2'));
+    await assertFails(read('pt1', 'clients/c2'));
+  });
+  it('manager edits trainer status but neither role nor trainer authorization fields are self-editable', async () => {
+    await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' }));
+    await assertFails(updateDoc(doc(dbFor('pt1'), 'users/pt1'), { status: 'inactive' }));
+    await assertSucceeds(updateDoc(doc(dbFor('manager'), 'users/pt1'), { status: 'inactive' }));
+    await assertFails(updateDoc(doc(dbFor('pt1'), 'users/pt1'), { status: 'active' }));
+    await assertFails(updateDoc(doc(dbFor('manager'), 'users/pt1'), { role: 'manager' }));
+  });
+  it('trainer client creation requires exactly self; manager assigns an active trainer', async () => {
+    await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' }));
+    await assertFails(setDoc(doc(dbFor('pt1'), 'clients/multi'), { name: 'bad', assignedTrainerIds: ['pt1', 'pt2'] }));
+    await assertSucceeds(setDoc(doc(dbFor('manager'), 'clients/managed'), { name: 'managed', assignedTrainerIds: ['pt1'] }));
+    await assertFails(setDoc(doc(dbFor('manager'), 'clients/invalid'), { name: 'invalid', assignedTrainerIds: ['inactive'] }));
+    await assertSucceeds(setDoc(doc(dbFor('pt1'), 'clients/own_single'), { name: 'self', assignedTrainerIds: ['pt1'] }));
+    await assertFails(setDoc(doc(dbFor('pt1'), 'clients/own_plus'), { name: 'selfplus', assignedTrainerIds: ['pt1', 'pt2'] }));
+  });
+  it('manager lists every client and descendant; inactive manager loses access', async () => {
+    await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' }));
+    await assertSucceeds(getDocs(collection(dbFor('manager'), 'clients')));
+    for (const sub of descendants) await assertSucceeds(getDocs(collection(dbFor('manager'), `clients/c2/${sub}`)));
+    await adminUpdate('users/manager', { status: 'inactive' });
+    await assertFails(read('manager', 'clients/c1'));
+    await assertFails(read('manager', 'users/pt1'));
+  });
+  it('manager manages catalog and assignment; trainer cannot alter either', async () => {
+    await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' }));
+    await assertSucceeds(setDoc(doc(dbFor('manager'), 'exercise_catalog/squat'), { name: 'Squat' }));
+    await assertFails(setDoc(doc(dbFor('pt1'), 'exercise_catalog/forged'), { name: 'Forged' }));
+    await assertSucceeds(updateDoc(doc(dbFor('manager'), 'clients/c1'), { assignedTrainerIds: ['pt2'] }));
+    await assertFails(read('pt1', 'clients/c1'));
+    await assertFails(updateDoc(doc(dbFor('manager'), 'clients/c1'), { assignedTrainerIds: ['unknown'] }));
+    await assertSucceeds(setDoc(doc(dbFor('manager'), 'clients/c1/assignment_history/h1'), { fromTrainerId: 'pt1', toTrainerId: 'pt2' }));
+    await assertFails(updateDoc(doc(dbFor('manager'), 'clients/c1/assignment_history/h1'), { toTrainerId: 'pt1' }));
+  });
+  it('package and session schemas deny quota tampering and client-side completion', async () => {
+    await assertFails(setDoc(doc(dbFor('pt1'), 'clients/c1/packages/new'), { totalSessions: 0, completedCount: 0, status: 'active' }));
+    await assertFails(updateDoc(doc(dbFor('pt1'), 'clients/c1/packages/old'), { completedCount: 1 }));
+    await assertFails(updateDoc(doc(dbFor('pt1'), 'clients/c1/sessions/old'), { status: 'completed' }));
+    await assertFails(setDoc(doc(dbFor('pt1'), 'clients/c1/sessions/bad'), { status: 'completed', sessionNumber: 1 }));
+  });
   it('legacy root resources, unknown paths, deeper nesting and collection groups denied', async () => {
     for (const path of ['pt_packages/old', 'workout_logs/old', 'unknown/doc', 'clients/c1/sessions/old/secret/data']) await assertFails(read('pt1', path));
     await assertFails(getDocs(collectionGroup(dbFor('pt1'), 'sessions')));

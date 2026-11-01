@@ -21,6 +21,7 @@ import 'cloud/cloud_session.dart';
 import 'cloud/firebase_cloud_gateway.dart';
 import 'design_system/app_design_system.dart';
 import 'features/screens.dart';
+import 'features/manager_dashboard_screen.dart';
 
 final databaseProvider = Provider<AppDatabase>(
   (ref) => throw UnimplementedError(),
@@ -58,9 +59,6 @@ class _OfflineCloudGateway implements CloudGateway {
   Future<void> signIn(String email, String password) async =>
       throw StateError('Firebase tidak tersedia pada lingkungan ini.');
       
-  @override
-  Future<void> signUp(String email, String password, String name) async =>
-      throw StateError('Firebase tidak tersedia pada lingkungan ini.');
 
   @override
   Future<void> signOut() async {}
@@ -79,6 +77,13 @@ class _OfflineCloudGateway implements CloudGateway {
     required String uid,
     required String displayName,
     required String phone,
+    double? heightCm,
+    double? weightKg,
+    String? specialization,
+    int? experienceYears,
+    String? certifications,
+    String? bio,
+    String? photoUrl,
   }) async {}
 }
 
@@ -108,7 +113,7 @@ class CloudAuthController extends AsyncNotifier<CloudProfile?> {
       );
       if (uid == null) return null;
       final profile = await gateway.profile(uid);
-      if (profile != null && profile.active && profile.role == 'trainer') {
+      if (profile != null && profile.canAccess) {
         return profile;
       }
     } catch (_) {}
@@ -141,10 +146,10 @@ class CloudAuthController extends AsyncNotifier<CloudProfile?> {
         state = const AsyncData(null);
         return 'Profil Coach tidak ditemukan di Firestore users/$uid. Hubungi administrator.';
       }
-      if (profile.role != 'trainer') {
+      if (profile.typedRole == null) {
         await gateway.signOut();
         state = const AsyncData(null);
-        return 'Akses ditolak: Akun bukan Personal Trainer.';
+        return 'Akses ditolak: Peran akun tidak dikenal.';
       }
       if (!profile.active) {
         await gateway.signOut();
@@ -166,23 +171,6 @@ class CloudAuthController extends AsyncNotifier<CloudProfile?> {
         return 'Koneksi jaringan gagal. Periksa koneksi internet Anda.';
       }
       return 'Gagal masuk: Periksa kembali email dan password.';
-    }
-  }
-
-  Future<String?> setup(String name, String email, String password) async {
-    state = const AsyncLoading();
-    final cleanEmail = email.trim();
-    if (name.trim().isEmpty || !cleanEmail.contains('@') || password.length < 6) {
-      state = const AsyncData(null);
-      return 'Nama, email valid, dan password minimal 6 karakter wajib diisi.';
-    }
-    try {
-      final gateway = await ref.read(cloudGatewayProvider.future);
-      await gateway.signUp(cleanEmail, password, name);
-      return await login(cleanEmail, password);
-    } catch (e) {
-      state = const AsyncData(null);
-      return 'Gagal mendaftar ke Firebase: ${e.toString().split(']').last.trim()}';
     }
   }
 
@@ -209,6 +197,13 @@ class CloudAuthController extends AsyncNotifier<CloudProfile?> {
   Future<String?> updateProfile({
     required String displayName,
     required String phone,
+    double? heightCm,
+    double? weightKg,
+    String? specialization,
+    int? experienceYears,
+    String? certifications,
+    String? bio,
+    String? photoUrl,
   }) async {
     final current = state.value;
     if (current == null) return 'Sesi tidak ditemukan.';
@@ -219,6 +214,13 @@ class CloudAuthController extends AsyncNotifier<CloudProfile?> {
         uid: current.uid,
         displayName: displayName.trim(),
         phone: phone.trim(),
+        heightCm: heightCm,
+        weightKg: weightKg,
+        specialization: specialization,
+        experienceYears: experienceYears,
+        certifications: certifications,
+        bio: bio,
+        photoUrl: photoUrl,
       );
       final updated = CloudProfile(
         current.uid,
@@ -227,6 +229,14 @@ class CloudAuthController extends AsyncNotifier<CloudProfile?> {
         email: current.email,
         phone: phone.trim(),
         role: current.role,
+        status: current.status,
+        heightCm: heightCm ?? current.heightCm,
+        weightKg: weightKg ?? current.weightKg,
+        specialization: specialization ?? current.specialization,
+        experienceYears: experienceYears ?? current.experienceYears,
+        certifications: certifications ?? current.certifications,
+        bio: bio ?? current.bio,
+        photoUrl: photoUrl ?? current.photoUrl,
       );
       state = AsyncData(updated);
       return null;
@@ -295,7 +305,19 @@ GoRouter _createRouter(Ref ref, Listenable refresh) => GoRouter(
       routes: [
         GoRoute(
           path: '/dashboard',
-          builder: (context, state) => const DashboardScreen(),
+          builder: (context, state) => Consumer(
+            builder: (context, ref, _) {
+              final cloudProfile = ref.watch(cloudAuthProvider).value;
+              if (cloudProfile != null && cloudProfile.isManager) {
+                return const ManagerDashboardScreen();
+              }
+              return const DashboardScreen();
+            },
+          ),
+        ),
+        GoRoute(
+          path: '/manager-dashboard',
+          builder: (context, state) => const ManagerDashboardScreen(),
         ),
         GoRoute(
           path: '/clients',

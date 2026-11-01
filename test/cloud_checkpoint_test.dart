@@ -11,10 +11,6 @@ class FakeGateway implements CloudGateway {
   @override
   String? get currentUid => null;
   @override
-  Future<void> signUp(String email, String password, String name) async {
-    // Implementasi dummy untuk melewati error testing
-  }
-  @override
   Future<CloudProfile?> profile(String uid) =>
       (profiles[uid] ??= Completer<CloudProfile?>()).future;
   @override
@@ -32,6 +28,13 @@ class FakeGateway implements CloudGateway {
     required String uid,
     required String displayName,
     required String phone,
+    double? heightCm,
+    double? weightKg,
+    String? specialization,
+    int? experienceYears,
+    String? certifications,
+    String? bio,
+    String? photoUrl,
   }) async {}
 }
 

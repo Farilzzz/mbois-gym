@@ -9,14 +9,15 @@ import 'package:mbois_gym_pt/features/screens.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('setup describes password hashing not encrypted storage', (
+  testWidgets('setup only explains admin provisioning without public registration', (
     tester,
   ) async {
     await tester.pumpWidget(
       const ProviderScope(child: MaterialApp(home: SetupScreen())),
     );
-    expect(find.textContaining('salted hash'), findsOneWidget);
-    expect(find.textContaining('secara terenkripsi'), findsNothing);
+    expect(find.textContaining('administrator'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('Sign Up'), findsNothing);
   });
 
   testWidgets(

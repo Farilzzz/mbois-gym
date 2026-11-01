@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:mbois_gym_pt/data/app_database.dart';
+import 'package:mbois_gym_pt/data/pt_packages.dart';
 
 abstract class GymRepository {
   Future<List<Client>> allClients(int trainerId);
@@ -27,8 +28,17 @@ abstract class GymRepository {
   Future<List<Session>> packageSessions(int packageId);
   Future<int> completedCount(int packageId);
   Future<int> schedule(int packageId, DateTime time);
-  Future<bool> cancelSession(int sessionId);
-  Future<bool> rescheduleSession(int sessionId, DateTime time);
+  Future<bool> cancelSession(
+    int sessionId, {
+    String? cancelledBy,
+    String? cancelReason,
+  });
+  Future<bool> rescheduleSession(
+    int sessionId,
+    DateTime time, {
+    String? rescheduledBy,
+    String? reason,
+  });
   Future<PtPackage> renewPackage(int clientId, int sessionsCount);
   Future<bool> completeSession(int sessionId, String notes);
   Future<int> saveWorkout({
@@ -57,6 +67,142 @@ abstract class GymRepository {
   Future<List<Session>> allSessionsForTrainer(int trainerId);
   Future<void> closePackage(int packageId);
   Future<List<ExerciseCatalogData>> get exerciseCatalog;
+
+  // Attendance & Package Sales Methods
+  Future<List<AttendanceRecord>> getAttendanceRecords({
+    int? trainerId,
+    int? clientId,
+    int? packageId,
+    String? status,
+  });
+  Future<bool> updateAttendanceRecord(AttendanceRecord record);
+  Future<bool> cancelAttendanceRecord(
+    int id, {
+    String? cancelledBy,
+    String? cancelReason,
+  });
+  Future<PackageSaleRecord> recordPackageSale(PackageSaleRecord sale);
+  Future<List<PackageSaleRecord>> getPackageSales({
+    String? trainerId,
+    int? year,
+    int? quarter,
+    String? status,
+  });
+}
+
+/// Model presensi/kehadiran sesi PT.
+class AttendanceRecord {
+  final int id;
+  final int packageId;
+  final int clientId;
+  final String clientName;
+  final int trainerId;
+  final String trainerName;
+  final int sessionNumber;
+  final DateTime date;
+  final String status;
+  final String notes;
+  final String? cancelReason;
+  final String? cancelledBy;
+
+  const AttendanceRecord({
+    required this.id,
+    required this.packageId,
+    required this.clientId,
+    this.clientName = '',
+    required this.trainerId,
+    this.trainerName = '',
+    this.sessionNumber = 1,
+    required this.date,
+    this.status = 'scheduled',
+    this.notes = '',
+    this.cancelReason,
+    this.cancelledBy,
+  });
+
+  AttendanceRecord copyWith({
+    int? id,
+    int? packageId,
+    int? clientId,
+    String? clientName,
+    int? trainerId,
+    String? trainerName,
+    int? sessionNumber,
+    DateTime? date,
+    String? status,
+    String? notes,
+    String? cancelReason,
+    String? cancelledBy,
+  }) => AttendanceRecord(
+    id: id ?? this.id,
+    packageId: packageId ?? this.packageId,
+    clientId: clientId ?? this.clientId,
+    clientName: clientName ?? this.clientName,
+    trainerId: trainerId ?? this.trainerId,
+    trainerName: trainerName ?? this.trainerName,
+    sessionNumber: sessionNumber ?? this.sessionNumber,
+    date: date ?? this.date,
+    status: status ?? this.status,
+    notes: notes ?? this.notes,
+    cancelReason: cancelReason ?? this.cancelReason,
+    cancelledBy: cancelledBy ?? this.cancelledBy,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'packageId': packageId,
+    'clientId': clientId,
+    'clientName': clientName,
+    'trainerId': trainerId,
+    'trainerName': trainerName,
+    'sessionNumber': sessionNumber,
+    'date': date,
+    'status': status,
+    'notes': notes,
+    'cancelReason': cancelReason,
+    'cancelledBy': cancelledBy,
+  };
+
+  factory AttendanceRecord.fromMap(Map<String, dynamic> map, {int? id}) {
+    DateTime parseTime(dynamic raw) {
+      if (raw is Timestamp) return raw.toDate();
+      if (raw is DateTime) return raw;
+      if (raw is String) {
+        return DateTime.tryParse(raw) ?? DateTime.now();
+      }
+      return DateTime.now();
+    }
+
+    return AttendanceRecord(
+      id:
+          id ??
+          (map['id'] as num?)?.toInt() ??
+          int.tryParse(map['id']?.toString() ?? '') ??
+          0,
+      packageId:
+          (map['packageId'] as num?)?.toInt() ??
+          (map['packageIntId'] as num?)?.toInt() ??
+          0,
+      clientId:
+          (map['clientId'] as num?)?.toInt() ??
+          (map['clientIntId'] as num?)?.toInt() ??
+          0,
+      clientName: map['clientName']?.toString() ?? '',
+      trainerId:
+          (map['trainerId'] as num?)?.toInt() ??
+          (map['trainerIntId'] as num?)?.toInt() ??
+          0,
+      trainerName: map['trainerName']?.toString() ?? '',
+      sessionNumber: (map['sessionNumber'] as num?)?.toInt() ?? 1,
+      date: parseTime(
+        map['date'] ?? map['scheduledTime'] ?? map['completedAt'],
+      ),
+      status: map['status']?.toString() ?? 'scheduled',
+      notes: map['notes']?.toString() ?? '',
+      cancelReason: map['cancelReason']?.toString(),
+      cancelledBy: map['cancelledBy']?.toString(),
+    );
+  }
 }
 
 /// SQLite Repository: wraps local Drift AppDatabase
@@ -127,11 +273,19 @@ class SqliteGymRepository implements GymRepository {
       db.schedule(packageId, time);
 
   @override
-  Future<bool> cancelSession(int sessionId) => db.cancelSession(sessionId);
+  Future<bool> cancelSession(
+    int sessionId, {
+    String? cancelledBy,
+    String? cancelReason,
+  }) => db.cancelSession(sessionId);
 
   @override
-  Future<bool> rescheduleSession(int sessionId, DateTime time) =>
-      db.rescheduleSession(sessionId, time);
+  Future<bool> rescheduleSession(
+    int sessionId,
+    DateTime time, {
+    String? rescheduledBy,
+    String? reason,
+  }) => db.rescheduleSession(sessionId, time);
 
   @override
   Future<PtPackage> renewPackage(int clientId, int sessionsCount) =>
@@ -229,6 +383,134 @@ class SqliteGymRepository implements GymRepository {
   @override
   Future<List<ExerciseCatalogData>> get exerciseCatalog =>
       db.select(db.exerciseCatalog).get();
+
+  final List<PackageSaleRecord> _packageSales = [];
+
+  @override
+  Future<PackageSaleRecord> recordPackageSale(PackageSaleRecord sale) async {
+    final id = sale.id.isNotEmpty
+        ? sale.id
+        : 'sale_${DateTime.now().millisecondsSinceEpoch}_${_packageSales.length + 1}';
+    final record = sale.copyWith(id: id);
+    _packageSales.removeWhere((s) => s.id == id);
+    _packageSales.add(record);
+    return record;
+  }
+
+  @override
+  Future<List<PackageSaleRecord>> getPackageSales({
+    String? trainerId,
+    int? year,
+    int? quarter,
+    String? status,
+  }) async {
+    var list = List<PackageSaleRecord>.from(_packageSales);
+    if (trainerId != null) {
+      list = list.where((s) => s.trainerId == trainerId).toList();
+    }
+    if (status != null) {
+      list = list
+          .where((s) => s.status.toLowerCase() == status.toLowerCase())
+          .toList();
+    }
+    if (year != null) {
+      list = list.where((s) => s.timestamp.year == year).toList();
+    }
+    if (quarter != null) {
+      list = list
+          .where((s) => ((s.timestamp.month - 1) ~/ 3) + 1 == quarter)
+          .toList();
+    }
+    list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return list;
+  }
+
+  @override
+  Future<List<AttendanceRecord>> getAttendanceRecords({
+    int? trainerId,
+    int? clientId,
+    int? packageId,
+    String? status,
+  }) async {
+    final sessions = await db.select(db.sessions).get();
+    final packages = await db.select(db.ptPackages).get();
+    final clients = await db.select(db.clients).get();
+    final trainers = await db.select(db.trainers).get();
+
+    final packageMap = {for (final p in packages) p.id: p};
+    final clientMap = {for (final c in clients) c.id: c};
+    final trainerMap = {for (final t in trainers) t.id: t};
+
+    final List<AttendanceRecord> records = [];
+    for (final s in sessions) {
+      final pkg = packageMap[s.packageId];
+      final client = pkg != null ? clientMap[pkg.clientId] : null;
+      final trainer = client != null ? trainerMap[client.trainerId] : null;
+
+      final rec = AttendanceRecord(
+        id: s.id,
+        packageId: s.packageId,
+        clientId: client?.id ?? 0,
+        clientName: client?.name ?? '',
+        trainerId: client?.trainerId ?? 0,
+        trainerName: trainer?.name ?? '',
+        sessionNumber: s.sessionNumber,
+        date: s.completedAt ?? s.scheduledAt,
+        status: s.status,
+        notes: s.notes,
+      );
+      records.add(rec);
+    }
+
+    var result = records;
+    if (clientId != null) {
+      result = result.where((r) => r.clientId == clientId).toList();
+    }
+    if (trainerId != null) {
+      result = result.where((r) => r.trainerId == trainerId).toList();
+    }
+    if (packageId != null) {
+      result = result.where((r) => r.packageId == packageId).toList();
+    }
+    if (status != null) {
+      result = result
+          .where((r) => r.status.toLowerCase() == status.toLowerCase())
+          .toList();
+    }
+    result.sort((a, b) => b.date.compareTo(a.date));
+    return result;
+  }
+
+  @override
+  Future<bool> updateAttendanceRecord(AttendanceRecord record) async {
+    final count =
+        await (db.update(
+          db.sessions,
+        )..where((s) => s.id.equals(record.id))).write(
+          SessionsCompanion(
+            scheduledAt: Value(record.date),
+            status: Value(record.status),
+            notes: Value(record.notes),
+            completedAt: record.status == 'completed'
+                ? Value(record.date)
+                : const Value.absent(),
+          ),
+        );
+    return count > 0;
+  }
+
+  @override
+  Future<bool> cancelAttendanceRecord(
+    int id, {
+    String? cancelledBy,
+    String? cancelReason,
+  }) async {
+    return cancelSession(
+      id,
+      cancelledBy: cancelledBy,
+      cancelReason: cancelReason,
+    );
+  }
 }
 
 /// Firestore Operational Repository: Primary cloud data store
@@ -491,10 +773,67 @@ class FirestoreGymRepository implements GymRepository {
     return null;
   }
 
+  Future<({String clientDocId, String packageDocId})?> _resolvePackage(
+    int packageIntId,
+  ) async {
+    final cachedClient = _clientStringIdByPkgInt[packageIntId];
+    final cachedPackage = _pkgDocIdByInt[packageIntId];
+    if (cachedClient != null && cachedPackage != null) {
+      return (clientDocId: cachedClient, packageDocId: cachedPackage);
+    }
+
+    final clients = await firestore
+        .collection('clients')
+        .where('assignedTrainerIds', arrayContains: currentUid)
+        .get();
+    for (final client in clients.docs) {
+      final packages = await client.reference
+          .collection('packages')
+          .where('id', isEqualTo: packageIntId)
+          .limit(1)
+          .get();
+      if (packages.docs.isEmpty) continue;
+      final packageDocId = packages.docs.first.id;
+      _pkgDocIdByInt[packageIntId] = packageDocId;
+      _clientStringIdByPkgInt[packageIntId] = client.id;
+      return (clientDocId: client.id, packageDocId: packageDocId);
+    }
+    return null;
+  }
+
+  Future<({String clientDocId, String sessionDocId})?> _resolveSession(
+    int sessionIntId,
+  ) async {
+    final cachedClient = _clientStringIdBySessionInt[sessionIntId];
+    final cachedSession = _sessionDocIdByInt[sessionIntId];
+    if (cachedClient != null && cachedSession != null) {
+      return (clientDocId: cachedClient, sessionDocId: cachedSession);
+    }
+
+    final clients = await firestore
+        .collection('clients')
+        .where('assignedTrainerIds', arrayContains: currentUid)
+        .get();
+    for (final client in clients.docs) {
+      final sessions = await client.reference
+          .collection('sessions')
+          .where('id', isEqualTo: sessionIntId)
+          .limit(1)
+          .get();
+      if (sessions.docs.isEmpty) continue;
+      final sessionDocId = sessions.docs.first.id;
+      _sessionDocIdByInt[sessionIntId] = sessionDocId;
+      _clientStringIdBySessionInt[sessionIntId] = client.id;
+      return (clientDocId: client.id, sessionDocId: sessionDocId);
+    }
+    return null;
+  }
+
   @override
   Future<List<Session>> packageSessions(int packageId) async {
-    final clientDocId = _clientStringIdByPkgInt[packageId];
-    if (clientDocId == null) return [];
+    final resolved = await _resolvePackage(packageId);
+    if (resolved == null) return [];
+    final clientDocId = resolved.clientDocId;
 
     final q = await firestore
         .collection('clients')
@@ -532,8 +871,9 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<int> completedCount(int packageId) async {
-    final clientDocId = _clientStringIdByPkgInt[packageId];
-    if (clientDocId == null) return 0;
+    final resolved = await _resolvePackage(packageId);
+    if (resolved == null) return 0;
+    final clientDocId = resolved.clientDocId;
 
     final q = await firestore
         .collection('clients')
@@ -548,12 +888,23 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<int> schedule(int packageId, DateTime time) async {
-    final clientDocId = _clientStringIdByPkgInt[packageId];
-    if (clientDocId == null) {
-      throw StateError('Client not resolved for package');
+    final resolved = await _resolvePackage(packageId);
+    if (resolved == null) throw StateError('Package not resolved');
+    final clientDocId = resolved.clientDocId;
+    final packageRef = firestore
+        .collection('clients')
+        .doc(clientDocId)
+        .collection('packages')
+        .doc(resolved.packageDocId);
+    final packageSnap = await packageRef.get();
+    final packageData = packageSnap.data();
+    if (!packageSnap.exists ||
+        packageData == null ||
+        packageData['status'] != 'active') {
+      throw StateError('Package is not active');
     }
 
-    // Get current session count to number next session
+    // Get current session count to number next session.
     final existing = await firestore
         .collection('clients')
         .doc(clientDocId)
@@ -573,54 +924,86 @@ class FirestoreGymRepository implements GymRepository {
     _sessionDocIdByInt[sessionIntId] = sessionRef.id;
     _clientStringIdBySessionInt[sessionIntId] = clientDocId;
 
-    await sessionRef.set({
-      'id': sessionIntId,
-      'sessionId': sessionRef.id,
-      'packageIntId': packageId,
-      'sessionNumber': sessionNumber,
-      'scheduledTime': Timestamp.fromDate(time),
-      'status': 'scheduled',
-      'notes': '',
-      'createdAt': FieldValue.serverTimestamp(),
+    await firestore.runTransaction((tx) async {
+      final snap = await tx.get(packageRef);
+      final data = snap.data();
+      if (!snap.exists || data == null || data['status'] != 'active') {
+        throw StateError('Package is not active');
+      }
+      tx.set(sessionRef, {
+        'id': sessionIntId,
+        'sessionId': sessionRef.id,
+        'packageIntId': packageId,
+        'packageDocId': resolved.packageDocId,
+        'sessionNumber': sessionNumber,
+        'scheduledTime': Timestamp.fromDate(time),
+        'status': 'scheduled',
+        'notes': '',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
     });
 
     return sessionIntId;
   }
 
   @override
-  Future<bool> cancelSession(int sessionId) async {
-    final clientDocId = _clientStringIdBySessionInt[sessionId];
-    final sessionDocId = _sessionDocIdByInt[sessionId];
-    if (clientDocId == null || sessionDocId == null) return false;
-
-    await firestore
+  Future<bool> cancelSession(
+    int sessionId, {
+    String? cancelledBy,
+    String? cancelReason,
+  }) async {
+    final resolved = await _resolveSession(sessionId);
+    if (resolved == null) return false;
+    final ref = firestore
         .collection('clients')
-        .doc(clientDocId)
+        .doc(resolved.clientDocId)
         .collection('sessions')
-        .doc(sessionDocId)
-        .update({
-          'status': 'cancelled',
-          'cancelledAt': FieldValue.serverTimestamp(),
-        });
-    return true;
+        .doc(resolved.sessionDocId);
+    return firestore.runTransaction<bool>((tx) async {
+      final snap = await tx.get(ref);
+      final data = snap.data();
+      if (!snap.exists || data == null || data['status'] != 'scheduled') {
+        return false;
+      }
+      tx.update(ref, {
+        'status': 'cancelled',
+        'cancelledAt': FieldValue.serverTimestamp(),
+        'cancelledBy': cancelledBy ?? currentUid ?? 'system',
+        'cancelReason': cancelReason ?? 'Dibatalkan oleh pelatih',
+      });
+      return true;
+    });
   }
 
   @override
-  Future<bool> rescheduleSession(int sessionId, DateTime time) async {
-    final clientDocId = _clientStringIdBySessionInt[sessionId];
-    final sessionDocId = _sessionDocIdByInt[sessionId];
-    if (clientDocId == null || sessionDocId == null) return false;
-
-    await firestore
+  Future<bool> rescheduleSession(
+    int sessionId,
+    DateTime time, {
+    String? rescheduledBy,
+    String? reason,
+  }) async {
+    final resolved = await _resolveSession(sessionId);
+    if (resolved == null) return false;
+    final ref = firestore
         .collection('clients')
-        .doc(clientDocId)
+        .doc(resolved.clientDocId)
         .collection('sessions')
-        .doc(sessionDocId)
-        .update({
-          'scheduledTime': Timestamp.fromDate(time),
-          'rescheduledAt': FieldValue.serverTimestamp(),
-        });
-    return true;
+        .doc(resolved.sessionDocId);
+
+    return firestore.runTransaction<bool>((tx) async {
+      final snap = await tx.get(ref);
+      final data = snap.data();
+      if (!snap.exists || data == null || data['status'] != 'scheduled') {
+        return false;
+      }
+      tx.update(ref, {
+        'scheduledTime': Timestamp.fromDate(time),
+        'rescheduledAt': FieldValue.serverTimestamp(),
+        'rescheduledBy': rescheduledBy ?? currentUid ?? 'system',
+        'rescheduleReason': reason ?? 'Dijadwalkan ulang oleh pelatih',
+      });
+      return true;
+    });
   }
 
   @override
@@ -678,9 +1061,10 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<bool> completeSession(int sessionId, String notes) async {
-    final clientDocId = _clientStringIdBySessionInt[sessionId];
-    final sessionDocId = _sessionDocIdByInt[sessionId];
-    if (clientDocId == null || sessionDocId == null) return false;
+    final resolved = await _resolveSession(sessionId);
+    if (resolved == null) return false;
+    final clientDocId = resolved.clientDocId;
+    final sessionDocId = resolved.sessionDocId;
 
     final sessionDocRef = firestore
         .collection('clients')
@@ -688,52 +1072,54 @@ class FirestoreGymRepository implements GymRepository {
         .collection('sessions')
         .doc(sessionDocId);
 
-    // Concurrency safe & idempotent quota deduction using Firestore transaction
-    return await firestore.runTransaction<bool>((tx) async {
+    // Legacy sessions lack packageDocId. Resolve outside the transaction:
+    // Firestore transactions cannot query for a package by its legacy ID.
+    final initial = await sessionDocRef.get();
+    final initialData = initial.data();
+    if (initialData == null) return false;
+    final legacyPackageId = (initialData['packageIntId'] as num?)?.toInt();
+    final resolvedPackage = legacyPackageId == null
+        ? null
+        : await _resolvePackage(legacyPackageId);
+
+    return firestore.runTransaction<bool>((tx) async {
       final sessionSnap = await tx.get(sessionDocRef);
       if (!sessionSnap.exists || sessionSnap.data() == null) return false;
 
       final data = sessionSnap.data()!;
       final currentStatus = data['status'] as String? ?? 'scheduled';
-
-      // Idempotency check: if already completed, do not re-deduct quota!
-      if (currentStatus == 'completed') {
-        return true;
-      }
       if (currentStatus != 'scheduled') {
         return false;
       }
 
       final packageIntId = (data['packageIntId'] as num?)?.toInt();
-      final pkgDocId = packageIntId != null
-          ? _pkgDocIdByInt[packageIntId]
-          : null;
+      final packageDocId =
+          data['packageDocId'] as String? ??
+          (packageIntId == null ? null : resolvedPackage?.packageDocId);
+      if (packageDocId == null) return false;
 
-      if (pkgDocId != null) {
-        final pkgDocRef = firestore
-            .collection('clients')
-            .doc(clientDocId)
-            .collection('packages')
-            .doc(pkgDocId);
+      final pkgDocRef = firestore
+          .collection('clients')
+          .doc(clientDocId)
+          .collection('packages')
+          .doc(packageDocId);
+      final pkgSnap = await tx.get(pkgDocRef);
+      final pkgData = pkgSnap.data();
+      if (!pkgSnap.exists || pkgData == null || pkgData['status'] != 'active') {
+        return false;
+      }
+      final maxSessions = (pkgData['totalSessions'] as num?)?.toInt() ?? 0;
+      final currentCompleted =
+          (pkgData['completedCount'] as num?)?.toInt() ?? 0;
+      if (currentCompleted >= maxSessions) return false;
 
-        final pkgSnap = await tx.get(pkgDocRef);
-        if (pkgSnap.exists && pkgSnap.data() != null) {
-          final pkgData = pkgSnap.data()!;
-          final maxSessions = (pkgData['totalSessions'] as num?)?.toInt() ?? 12;
-          final currentCompleted =
-              (pkgData['completedCount'] as num?)?.toInt() ?? 0;
-
-          if (currentCompleted >= maxSessions) {
-            throw StateError(
-              'Kuota paket sudah habis ($maxSessions sesi). Tidak dapat memotong lagi.',
-            );
-          }
-
-          tx.update(pkgDocRef, {
-            'completedCount': currentCompleted + 1,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-        }
+      tx.update(pkgDocRef, {
+        'completedCount': currentCompleted + 1,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      // Backfill only legacy records, preserving an existing immutable ref.
+      if (data['packageDocId'] == null) {
+        tx.update(sessionDocRef, {'packageDocId': packageDocId});
       }
 
       tx.update(sessionDocRef, {
@@ -1351,5 +1737,137 @@ class FirestoreGymRepository implements GymRepository {
         source: 'local',
       ),
     ];
+  }
+
+  @override
+  Future<PackageSaleRecord> recordPackageSale(PackageSaleRecord sale) async {
+    final docRef = sale.id.isNotEmpty
+        ? firestore.collection('package_sales').doc(sale.id)
+        : firestore.collection('package_sales').doc();
+    final finalSale = sale.copyWith(id: docRef.id);
+    await docRef.set(finalSale.toMap());
+    return finalSale;
+  }
+
+  @override
+  Future<List<PackageSaleRecord>> getPackageSales({
+    String? trainerId,
+    int? year,
+    int? quarter,
+    String? status,
+  }) async {
+    final snap = await firestore.collection('package_sales').get();
+    var list = snap.docs
+        .map((d) => PackageSaleRecord.fromMap(d.data(), id: d.id))
+        .toList();
+
+    if (trainerId != null) {
+      list = list.where((s) => s.trainerId == trainerId).toList();
+    }
+    if (status != null) {
+      list = list
+          .where((s) => s.status.toLowerCase() == status.toLowerCase())
+          .toList();
+    }
+    if (year != null) {
+      list = list.where((s) => s.timestamp.year == year).toList();
+    }
+    if (quarter != null) {
+      list = list
+          .where((s) => ((s.timestamp.month - 1) ~/ 3) + 1 == quarter)
+          .toList();
+    }
+    list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return list;
+  }
+
+  @override
+  Future<List<AttendanceRecord>> getAttendanceRecords({
+    int? trainerId,
+    int? clientId,
+    int? packageId,
+    String? status,
+  }) async {
+    final List<AttendanceRecord> list = [];
+    final clientDocs = await firestore.collection('clients').get();
+    for (final cDoc in clientDocs.docs) {
+      final cData = cDoc.data();
+      final cIntId = (cData['id'] as num?)?.toInt() ?? 0;
+      final cName = cData['name'] as String? ?? '';
+      final tIntId = (cData['trainerIntId'] as num?)?.toInt() ?? 0;
+
+      if (clientId != null && cIntId != clientId) continue;
+      if (trainerId != null && tIntId != trainerId) continue;
+
+      final sDocs = await cDoc.reference.collection('sessions').get();
+      for (final sDoc in sDocs.docs) {
+        final sData = sDoc.data();
+        final pIntId = (sData['packageIntId'] as num?)?.toInt() ?? 0;
+        if (packageId != null && pIntId != packageId) continue;
+        final sStatus = sData['status'] as String? ?? 'scheduled';
+        if (status != null && sStatus.toLowerCase() != status.toLowerCase()) {
+          continue;
+        }
+
+        final sId = (sData['id'] as num?)?.toInt() ?? _deriveIntId(sDoc.id);
+        final date =
+            (sData['scheduledTime'] as Timestamp?)?.toDate() ??
+            (sData['completedAt'] as Timestamp?)?.toDate() ??
+            DateTime.now();
+
+        list.add(
+          AttendanceRecord(
+            id: sId,
+            packageId: pIntId,
+            clientId: cIntId,
+            clientName: cName,
+            trainerId: tIntId,
+            trainerName: '',
+            sessionNumber: (sData['sessionNumber'] as num?)?.toInt() ?? 1,
+            date: date,
+            status: sStatus,
+            notes: sData['notes'] as String? ?? '',
+            cancelReason: sData['cancelReason'] as String?,
+            cancelledBy: sData['cancelledBy'] as String?,
+          ),
+        );
+      }
+    }
+    list.sort((a, b) => b.date.compareTo(a.date));
+    return list;
+  }
+
+  @override
+  Future<bool> updateAttendanceRecord(AttendanceRecord record) async {
+    final resolved = await _resolveSession(record.id);
+    if (resolved == null) return false;
+    final ref = firestore
+        .collection('clients')
+        .doc(resolved.clientDocId)
+        .collection('sessions')
+        .doc(resolved.sessionDocId);
+
+    await ref.update({
+      'scheduledTime': Timestamp.fromDate(record.date),
+      'status': record.status,
+      'notes': record.notes,
+      if (record.status == 'completed')
+        'completedAt': Timestamp.fromDate(record.date),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    return true;
+  }
+
+  @override
+  Future<bool> cancelAttendanceRecord(
+    int id, {
+    String? cancelledBy,
+    String? cancelReason,
+  }) async {
+    return cancelSession(
+      id,
+      cancelledBy: cancelledBy,
+      cancelReason: cancelReason,
+    );
   }
 }

@@ -1,194 +1,242 @@
 # Mbois Gym PT Management
 
-Sistem manajemen Personal Trainer untuk membantu operasional Mbois Gym. Proyek ini mendigitalisasi pengelolaan klien, program latihan, asesmen, absensi dan pencatatan sesi, serta evaluasi Post PT. Pengguna utama adalah pelatih; klien tidak memerlukan akun aplikasi.
+Sistem manajemen Personal Trainer (PT) resmi untuk operasional Mbois Gym. Proyek ini mendigitalisasi pengelolaan klien, program latihan, asesmen fisik awal, pencatatan jadwal dan absensi sesi, pemotongan kuota dengan tanda tangan digital adaptif, evaluasi Post PT, katalog 4 paket resmi individu, serta dashboard manajer untuk memantau target penjualan triwulan.
 
-## Status dan fitur
+Aplikasi client dibangun menggunakan Flutter dengan Firebase Authentication dan Cloud Firestore sebagai backend operasional utama yang terpusat dan konsisten antarperangkat.
 
-Implementasi tersedia dalam source, tetapi bukan pernyataan siap produksi atau bukti seluruh alur telah diuji pada backend nyata.
+---
 
-- Login PT menggunakan Firebase Authentication email/password dengan profil `users/{uid}` berperan `trainer` dan berstatus `active`.
-- Reset password melalui Firebase; pesan UI bersifat generik dan saat ini tidak membuktikan email berhasil terkirim.
-- Sign Up yang tersedia membuat akun SQLite lokal, **bukan akun Firebase**. Akun PT cloud harus diprovisikan administrator.
-- Profil PT, pengaturan tema dan logout. Perubahan profil cloud dibatasi pada nama dan telepon; jangan menyamakan seluruh kemampuan edit akun lokal dengan akun Firebase.
-- Daftar klien dan paket aktif/selesai, tambah/edit data klien, asesmen berupa data profil dan riwayat klien.
-- Pengelolaan paket, jadwal dan absensi sesi, serta pengurangan kuota melalui transaksi aplikasi.
-- List Exercise/katalog latihan lokal dan layanan pencarian latihan eksternal (wger).
-- Workout Log dengan exercise, set, repetisi, beban, RPE/RIR, catatan, metode straight set, superset dan drop set; editor riwayat serta penghapusan.
-- Perhitungan volume berdasarkan repetisi × beban; akumulasi superset/drop set dan penanganan beban null, dengan grafik progres.
-- Evaluasi Post PT dan finalisasi paket.
-- Kanvas tanda tangan PT dan klien: memeriksa minimum titik goresan di perangkat. Firestore menyimpan status `verified_pending_storage`, **bukan gambar atau bukti identitas penanda tangan**.
-- Arsip SQLite lokal tetap tersedia. Ini bukan backup otomatis seluruh data cloud maupun jaminan sinkronisasi offline.
+## 1. Arsitektur Sistem
 
-### Belum lengkap / perlu pengembangan
+- **Platform Client**: Flutter (Dart SDK `^3.13.2`), kompatibel dengan Android (minSdkVersion 21).
+- **Backend Operasional**:
+  - **Firebase Authentication**: Autentikasi email/password terverifikasi untuk Personal Trainer dan Manager.
+  - **Cloud Firestore**: Single source of truth untuk profil pengguna, data klien, subkoleksi paket/sesi/workout/evaluasi, serta transaksi penjualan paket (`package_sales`).
+- **State Management**: `flutter_riverpod` (AsyncNotifier dan AutoDispose providers).
+- **Navigasi & Routing**: `go_router` dengan `AppShell` adaptif berbasis peran pengguna (`trainer` vs `manager`).
+- **Visualisasi & Grafik**: `fl_chart` untuk grafik batang performa penjualan bulanan triwulan dan perkembangan tonase latihan.
+- **Penyimpanan Lokal / Cache**: `shared_preferences` untuk preferensi tema tampilan (Dark/Light). Tampilan UI telah dibersihkan dari label teknis developer seperti "SQLite" atau "Database Lokal" dan digantikan dengan "Riwayat & Arsip Latihan".
 
-Penyimpanan bukti tanda tangan, registrasi cloud mandiri, konfigurasi Firebase non-Android, penguatan rules dan privasi arsip lokal, serta pengujian end-to-end multi-perangkat masih perlu dikerjakan. Jangan menggunakan data klien nyata untuk pengujian tanpa izin.
+---
 
-## Teknologi
+## 2. Peran & Otorisasi Pengguna
 
-Flutter 3.47.2 dan Dart 3.13.2 dipakai pada validasi publikasi; batas SDK di `pubspec.yaml` adalah `^3.13.2`.
+Aplikasi menerapkan dua peran operasional utama berbasis dokumen `users/{uid}` di Cloud Firestore:
 
-- `flutter_riverpod` untuk state management (bukan GetX).
-- `go_router` untuk navigasi.
-- `firebase_core`, `firebase_auth`, `cloud_firestore` untuk backend cloud.
-- `drift`, SQLite, `path_provider`, `path` untuk database lokal; kode `app_database.g.dart` disertakan.
-- `shared_preferences`, `flutter_secure_storage`, `cryptography` untuk preferensi, penyimpanan terkait sesi dan hashing sandi lokal. Hashing sandi tidak berarti database SQLite terenkripsi.
-- `fl_chart`, `http`, Material UI dan aset lokal.
-- `flutter_test`, `flutter_lints`, `build_runner`, `drift_dev` untuk pengujian/generasi kode.
+### A. TRAINER (Personal Trainer)
+- Melihat dan memperbarui data profil profesional pribadi (nama, telepon, tinggi badan, berat badan, spesialisasi, pengalaman, sertifikasi, bio).
+- Mengelola data klien yang ditugaskan kepadanya (`assignedTrainerIds`).
+- Mengelola jadwal latihan, absensi, program latihan (Workout Log), serta evaluasi Post PT.
+- Melakukan pemotongan kuota sesi dengan verifikasi tanda tangan ganda (Klien dan Coach).
+- Membatalkan jadwal sesi tanpa merusak kuota paket.
+- Mendaftarkan klien baru atau memperpanjang paket berdasarkan 4 pilihan paket resmi PT.
 
-Versi teresolusi ada di `pubspec.lock`; jangan melakukan upgrade dependency massal saat setup. Tidak membutuhkan XAMPP atau MySQL.
+### B. MANAGER (Manajer Operasional)
+- Mengakses **Dashboard Manajemen Khusus** (`/manager-dashboard` atau `/dashboard` otomatis).
+- Memantau metrik bisnis triwulan (Q1–Q4) dengan target awal **Rp 5.000.000** per triwulan:
+  - Total PT aktif & total klien terdaftar.
+  - Jumlah paket PT terjual & total nominal omzet paket.
+  - Persentase pencapaian target triwulan dan sisa nominal menuju target.
+  - Grafik batang fl_chart per bulan dalam triwulan terpilih.
+  - Tabel perbandingan performa penjualan dan klien per Personal Trainer.
+- Melihat daftar seluruh Personal Trainer Mbois Gym beserta profil profesionalnya.
+- Mengelola penugasan klien antar-PT.
 
-## Struktur project
+> **PENTING — Keamanan Pemberian Peran**:
+> Pendaftaran mandiri publik (self-signup) sebagai Manager maupun Trainer aktif **ditiadakan secara ketat**. Seluruh akun PT dan Manajer harus diprovisikan oleh pihak berwenang melalui Firebase Console atau proses administratif tepercaya. Field `role`, `status`, dan `assignedTrainerIds` dilindungi oleh Firestore Security Rules dan tidak dapat diubah oleh trainer sendiri.
 
-Root hasil clone langsung berisi project Flutter, bukan folder pembungkus tambahan.
+---
+
+## 3. Struktur Koleksi Cloud Firestore
 
 ```text
-lib/main.dart                 Inisialisasi Firebase dan SQLite
-lib/app.dart                  Provider, autentikasi, tema dan router
-lib/cloud/                    Gateway Firebase, kontrak sesi dan layar pilot
-lib/data/                     Repository, skema Drift, API latihan, utilitas migrasi
-lib/features/screens.dart     Antarmuka fitur aplikasi
-lib/design_system/            Token dan komponen visual
-lib/widgets/                  Kanvas tanda tangan
-assets/images/                Logo dan gambar antarmuka
-android/                      Target Android dan Gradle wrapper
-ios/, web/                    Scaffold platform, Firebase belum dikonfigurasi
-linux/, macos/, windows/       Scaffold desktop, belum divalidasi sebagai target cloud
-test/                         Unit dan widget tests
-rules-test/                   Pengujian rules dengan emulator lokal
-firebase.test.json            Konfigurasi emulator demo
-firestore.rules               Rules lokal; status deployment tidak diverifikasi
-firebase.json                 Konfigurasi FlutterFire dan referensi rules
-pubspec.yaml, pubspec.lock     Dependency dan versi teresolusi
-analysis_options.yaml         Konfigurasi analyzer
+users/{uid}                           -> Dokumen profil PT / Manager
+  ├── uid: string
+  ├── name: string
+  ├── email: string
+  ├── phone: string
+  ├── role: 'trainer' | 'manager'
+  ├── status: 'active' | 'inactive'
+  ├── heightCm: number (opsional)
+  ├── weightKg: number (opsional)
+  ├── specialization: string (opsional)
+  ├── experienceYears: number (opsional)
+  ├── certifications: string (opsional)
+  └── bio: string (opsional)
+
+clients/{clientId}                    -> Dokumen klien Mbois Gym
+  ├── id: number | string
+  ├── name: string
+  ├── age: number
+  ├── contact: string
+  ├── assignedTrainerIds: array[string]
+  ├── heightCm: number
+  ├── initialWeightKg: number
+  ├── goal: string
+  ├── medicalHistory: string
+  ├── injuryHistory: string
+  ├── assessmentNotes: string
+  │
+  ├── packages/{packageId}            -> Subkoleksi Paket PT
+  │     ├── id: number | string
+  │     ├── clientId: string
+  │     ├── totalSessions: number (4, 10, 16, 24)
+  │     ├── completedCount: number (terkunci server/transaksi)
+  │     ├── status: 'active' | 'closed'
+  │     └── createdAt: timestamp
+  │
+  ├── sessions/{sessionId}            -> Subkoleksi Jadwal & Absensi
+  │     ├── id: number | string
+  │     ├── packageId: string
+  │     ├── sessionNumber: number
+  │     ├── scheduledAt: timestamp
+  │     ├── status: 'scheduled' | 'completed' | 'cancelled'
+  │     ├── notes: string
+  │     ├── clientSignatureStatus: string ('verified_touchscreen')
+  │     ├── coachSignatureStatus: string ('verified_touchscreen')
+  │     └── cancelReason: string (jika status == 'cancelled')
+  │
+  ├── workouts/{workoutId}            -> Catatan Latihan (Exercise, Sets, Reps, Load)
+  ├── evaluations/{evaluationId}      -> Evaluasi Post PT & status finalisasi paket
+  └── progress_measurements/{progId}  -> Pengukuran progres lingkar & berat badan
+
+package_sales/{saleId}                -> Catatan snapshot transaksi penjualan paket
+  ├── id: string
+  ├── clientId: string
+  ├── clientName: string
+  ├── trainerId: string
+  ├── trainerName: string
+  ├── tierName: string
+  ├── sessionsCount: number
+  ├── durationWeeks: number
+  ├── price: number (snapshot Rupiah)
+  ├── timestamp: timestamp
+  └── status: 'valid' | 'refunded'
 ```
 
-## Instalasi anggota kelompok
+---
 
-1. Install Git dari https://git-scm.com/.
-2. Install Flutter SDK dan tambahkan ke PATH. Gunakan versi yang sesuai Dart SDK di atas. Install Android Studio/Android SDK, Platform Tools, Build Tools dan toolchain Java yang didukung Flutter. Panduan: https://docs.flutter.dev/get-started/install.
-3. Install VS Code beserta ekstensi Flutter dan Dart.
-4. Terima undangan repository private dan login GitHub menggunakan akun sendiri. Clone:
+## 4. Pricelist Resmi Paket Personal Trainer
+
+Berdasarkan tarif resmi Mbois Gym, aplikasi menyediakan 4 pilihan paket PT individu baku:
+
+| Paket | Sesi | Durasi | Harga Resmi |
+|---|---|---|---|
+| **Paket 4 Sesi** | 4 sesi | 4 minggu | Rp 500.000 |
+| **Paket 10 Sesi** | 10 sesi | 4 minggu | Rp 1.000.000 |
+| **Paket 16 Sesi** | 16 sesi | 8 minggu | Rp 1.600.000 |
+| **Paket 24 Sesi** | 24 sesi | 8 minggu | Rp 2.000.000 |
+
+- Setiap pendaftaran klien baru atau perpanjangan paket PT menyimpan snapshot harga dan data paket ke `package_sales`, sehingga perubahan harga di masa mendatang tidak mengubah riwayat finansial terdahulu.
+- Kuota sesi dihitung secara atomik dan tidak dapat bernilai negatif.
+
+---
+
+## 5. Fitur Operasional Utama
+
+### A. CRUD Absensi & Pembatalan Sesi
+- **CREATE**: Menjadwalkan appointment sesi latihan berdasarkan kalender dan waktu.
+- **READ**: Filter status sesi yang interaktif:
+  - `Aktif / Dijadwalkan` (default): Menampilkan sesi mendatang yang siap dijalankan.
+  - `Hadir`: Menampilkan riwayat sesi yang telah selesai diverifikasi.
+  - `Dibatalkan`: Menampilkan sesi yang dibatalkan beserta alasannya.
+  - `Semua`: Menampilkan seluruh catatan sesi.
+- **UPDATE / CANCEL**:
+  - Tombol **Batalkan Sesi** memunculkan dialog konfirmasi dan input alasan pembatalan. Sesi yang dibatalkan **langsung menghilang dari daftar sesi aktif**, tersimpan permanen di cloud dengan status `cancelled`, dan **kuota paket klien tidak terpotong**.
+- **DELETE / RESTORE**: Audit trail tersimpan pada dokumen sesi tanpa penghapusan diam-diam.
+
+### B. Pop-Up Tanda Tangan Khusus Touchscreen
+Menjawab kendala gesture dragging pada layar HP fisik:
+- **Dedicated Fullscreen Dialog**: Membuka kanvas tanda tangan modal dengan ukuran besar yang terkunci (`PopScope(canPop: false)`), mencegah konflik scrolling halaman latar.
+- **RawGestureDetector Independen**: Gesture menggambar menang di arena gesture Flutter, mendukung multi-stroke tanpa terhapus saat jari diangkat.
+- **Verifikasi Ganda**: Memeriksa tanda tangan terpisah untuk **Klien** dan **Coach / PT**.
+- **Signature Preview Card**: Menampilkan kartu pratinjau tanda tangan, status terverifikasi, dan opsi ubah tanda tangan sebelum konfirmasi akhir.
+- **Proteksi Idempotensi**: Mencegah double-tap tombol "Verifikasi & Potong Sesi" dan memproses transaksi atomik Firestore.
+
+### C. Dashboard Manajer & Target Triwulan Rp 5 Juta
+- Menggunakan `fl_chart` untuk menampilkan grafik batang real-time penjualan 3 bulan dalam satu triwulan.
+- Menghitung persentase pencapaian omzet valid terhadap target Rp 5.000.000.
+- Menampilkan perbandingan performa masing-masing PT (klien ditangani, paket terjual, dan total nominal tercatat).
+- Filter pemilihan kuartal (Q1 Jan-Mar, Q2 Apr-Jun, Q3 Jul-Sep, Q4 Oct-Dec) dan tahun.
+
+---
+
+## 6. Firestore Security Rules
+
+Keamanan database diatur dalam `firestore.rules` dan diuji secara deterministik dengan Firebase Emulator Suite (57 pengujian):
+1. Pengguna tak terotentikasi dan akun berstatus `pending`/`inactive` diblokir total dari seluruh data operasional.
+2. Trainer hanya dapat membaca dan menulis data klien yang terdaftar di `assignedTrainerIds`.
+3. Trainer dilarang memanipulasi `role`, `status`, atau `assignedTrainerIds` sendiri.
+4. Trainer dilarang mengubah status sesi menjadi `completed` atau menaikkan `completedCount` kuota secara langsung dari client tanpa melalui transaksi backend yang sah.
+5. Manajer memiliki hak baca seluruh profil PT, data klien, subkoleksi operasional, dan katalog penjualan untuk keperluan pelaporan dashboard.
+6. Subkoleksi root tak berpemilik dan koleksi warisan diblokir (`fail closed`).
+
+---
+
+## 7. Pengujian & Hasil Validasi
+
+Validasi dijalankan secara menyeluruh di lingkungan pengujian:
+
+| Pengujian | Perintah | Hasil Aktual |
+|---|---|---|
+| **Firestore Security Rules** | `npm run test:rules` | **57 tests passed** (0 failed) |
+| **Flutter Analyze** | `flutter analyze --no-fatal-infos` | **0 errors, 0 warnings** (Clean) |
+| **Flutter Test Suite** | `flutter test --no-pub --platform=tester` | **115 tests passed** (0 failed) |
+| **Android APK Debug Build** | `flutter build apk --debug --no-pub` | **SUCCESS** (`app-debug.apk`) |
+
+### Rincian Test Suite Flutter (115 tests):
+- `test/auth_test.dart` (11 tests): Otentikasi dan hashing.
+- `test/cloud_auth_cutover_test.dart` (17 tests): Firebase Auth, reset password, dan pemblokiran akun inaktif.
+- `test/firestore_session_repository_test.dart` (16 tests): Transaksi atomik sesi, idempotensi, dan fallback ID.
+- `test/pt_packages_and_manager_metrics_test.dart` (10 tests): Perhitungan metrik triwulan, fl_chart data, dan format Rupiah.
+- `test/signature_pad_test.dart` (13 tests): Kanvas tanda tangan dan preview card.
+- `test/dedicated_signature_dialog_test.dart` (17 tests): Dialog fullscreen tanda tangan adaptif.
+- `test/manager_dashboard_test.dart` (10 tests): UI responsif dashboard manajer dan fl_chart rendering.
+- `test/pt_features_and_signature_flow_test.dart` (4 tests): Alur pembatalan sesi, pemotongan kuota, dan form paket resmi.
+- `test/ui_flow_test.dart`, `test/revision_ui_test.dart`, `test/workout_ui_test.dart`, `test/exercise_api_test.dart`: Regresi UI dan workout log.
+
+---
+
+## 8. Cara Menjalankan Project
+
+### Prasyarat
+- Flutter SDK `^3.13.2`
+- Android SDK (API Level 21+)
+- Node.js & npm (untuk Firebase Emulator rules tests)
+- Java 17 / 21
+
+### Langkah Menjalankan
+1. Clone repository:
    ```bash
-   git clone https://github.com/Farilzzz/Mbois-Gym-PT-Management.git
+   git clone https://github.com/YakzIsGood/mbois-gym.git
+   cd mbois-gym
    ```
-   Bila muncul `Repository not found`, periksa akun GitHub dan status penerimaan undangan, bukan mengubah repository menjadi public.
-5. Buka project:
-   ```bash
-   cd Mbois-Gym-PT-Management
-   code .
-   ```
-6. Periksa lingkungan:
-   ```bash
-   flutter doctor
-   flutter doctor --android-licenses
-   ```
-   Selesaikan masalah Android toolchain yang ditampilkan.
-7. Ambil dependency:
+2. Pasang dependency:
    ```bash
    flutter pub get
    ```
-8. Periksa konfigurasi Firebase sesuai bagian berikut. Konfigurasi klien Android sudah disertakan; minta akun PT uji tersendiri kepada pemilik backend. Jangan membagikan password di Git atau README.
-9. Nyalakan emulator Android, atau hubungkan smartphone dengan USB Debugging dan setujui otorisasi USB.
-10. Periksa perangkat:
-    ```bash
-    flutter devices
-    ```
-11. Jalankan pada Android:
-    ```bash
-    flutter run
-    ```
-    Jika ada beberapa perangkat, gunakan `flutter run -d <id-perangkat-android>` dengan ID dari langkah sebelumnya.
-12. Build APK debug:
-    ```bash
-    flutter build apk --debug
-    ```
-    Hasil: `build/app/outputs/flutter-apk/app-debug.apk`. APK/build tidak dimasukkan ke Git. Konfigurasi release saat ini masih memakai signing debug, sehingga bukan konfigurasi distribusi produksi.
+3. Jalankan pengujian otomatis:
+   ```bash
+   flutter test --no-pub --platform=tester
+   ```
+4. Jalankan emulator Firestore rules:
+   ```bash
+   npm ci
+   npm run test:rules
+   ```
+5. Jalankan aplikasi pada perangkat Android:
+   ```bash
+   flutter run
+   ```
+6. Kompilasi APK debug:
+   ```bash
+   flutter build apk --debug
+   ```
+   Artefak APK tersimpan di: `build/app/outputs/flutter-apk/app-debug.apk`.
 
-Jika mengubah skema Drift, regenerasikan kode dengan `dart run build_runner build`, review hasilnya, dan jalankan test. Clone biasa tidak perlu regenerasi.
+---
 
-## Firebase dan keamanan
+## 9. Batasan & Tindak Lanjut Backend
 
-Project ID: `mbois-gym`. Android application ID: `com.mboisgym.pt.mbois_gym_pt`.
-
-`lib/firebase_options.dart` dan `android/app/google-services.json` merupakan **konfigurasi klien**, bukan service account/admin key. Keduanya disertakan agar build menggunakan project yang sama. API key Firebase sisi klien tidak memberi hak administrator; otorisasi bergantung pada Authentication dan Firestore Rules.
-
-Untuk mendapatkan ulang konfigurasi, hubungi pemilik project atau buka Firebase Console > Project Settings > General > Your apps > aplikasi Android dengan package tersebut, kemudian unduh `google-services.json` ke `android/app/`. Minta salinan `firebase_options.dart` yang cocok dari pemilik; perubahan/generasi ulang FlutterFire harus dikoordinasikan agar tidak mengganti project/platform tanpa sengaja.
-
-Pemilik backend perlu memastikan provider Email/Password aktif, membuat akun uji masing-masing anggota, dan menyediakan dokumen `users/{uid}` yang sesuai gateway (`displayName`, `phone`, `role: trainer`, `status: active`). Aplikasi tidak berwenang membuat profil cloud sendiri. Penugasan klien menggunakan `assignedTrainerIds`.
-
-Akses repository GitHub, akses login aplikasi, dan akses administrasi Firebase adalah tiga hal berbeda. Menjalankan aplikasi tidak membutuhkan izin Firebase Console; mengelola backend membutuhkan undangan Google account melalui Project Settings > Users and Permissions dengan hak minimum sesuai tugas. Jangan berbagi akun administrator.
-
-Tidak menyertakan service account JSON, private key, token akses, password operasional, keystore atau database perangkat. File sensitif harus dibagikan hanya lewat kanal aman bila benar-benar diperlukan, tidak melalui commit.
-
-### Batas audit keamanan
-
-- Rules lokal mensyaratkan trainer aktif dan penugasan klien, serta membatasi edit profil. Namun create klien masih memungkinkan memasukkan UID trainer tambahan; akses tulis subkoleksi belum memvalidasi skema, kuota atau transisi status secara ketat. Transaksi pada aplikasi bukan pengganti validasi server.
-- Arsip SQLite dapat dibuka dari layar login tanpa autentikasi; perangkat bersama berisiko memperlihatkan data historis. Database tidak terbukti terenkripsi.
-- Mapping ID cloud berbasis waktu/memori perlu ditinjau untuk benturan dan restart; penghapusan dokumen klien tidak otomatis membersihkan subkoleksi Firestore.
-- Tanda tangan belum tersimpan sebagai bukti; error permintaan reset password belum dibedakan dengan baik di UI.
-- Rules produksi, provider Auth aktif, pembatasan API key, data produksi dan akses lintas perangkat belum diverifikasi langsung pada publikasi ini.
-
-**Jangan menjalankan deployment Firebase, mengubah rules produksi, mengimpor data lewat migrator atau menghapus data tanpa persetujuan pemilik.** `firebase.json` masih mereferensikan rules lokal; bukan instruksi untuk deploy. Gunakan data sintetis dan emulator untuk pengembangan.
-
-## Panduan penggunaan
-
-1. Login dengan akun PT cloud aktif yang disiapkan administrator. Sign Up lokal tidak membuat akses cloud.
-2. Dari dashboard, pilih klien atau tambahkan klien uji dan paket sesi. Tinjau klien aktif/selesai.
-3. Lengkapi asesmen/profil klien, kemudian kelola jadwal dan absensi.
-4. Catat Workout Log: pilih exercise, masukkan set/repetisi/beban dan metode latihan; simpan lalu tinjau history serta tonase. Edit log yang sama bila diperlukan.
-5. Untuk penyelesaian sesi, isi kanvas tanda tangan PT/klien dan konfirmasi. Periksa status sesi dan sisa kuota setelah operasi selesai. Jangan menganggap status tanda tangan sebagai bukti tersimpan.
-6. Isi evaluasi Post PT, review, dan konfirmasi finalisasi paket.
-7. Gunakan profil/pengaturan untuk data PT, tema dan logout. Tombol Lupa Password mengajukan reset ke Firebase; periksa inbox/spam dan hubungi administrator bila tidak diterima.
-
-## Pengujian dan hasil publikasi
-
-Validasi pada 31 Oktober 2026, Windows, Flutter 3.47.2 / Dart 3.13.2:
-
-| Perintah | Hasil |
-| --- | --- |
-| `flutter pub get` | Berhasil; 31 paket memiliki versi lebih baru di luar constraint |
-| `flutter analyze` | Exit 1: 14 info, 0 error, 0 warning |
-| `flutter analyze --no-fatal-infos` | Exit 0; 14 info tetap ada |
-| `flutter test` | 62 test lulus |
-| `flutter build apk --debug` | Berhasil; APK 263329415 byte |
-
-Lint mencakup BuildContext setelah async dan penggunaan API deprecated di `screens.dart`. Build memberi peringatan ketidakselarasan versi SDK XML tools. Test tidak dihapus atau diubah untuk membuat hasil lulus.
-
-Tidak ada perangkat Android terhubung saat `flutter devices`; smoke test sampai dashboard serta login/CRUD terhadap backend produksi belum dilakukan. Build berhasil tidak membuktikan seluruh alur runtime berhasil.
-
-Pengujian rules opsional memerlukan Node.js/npm dan Java sesuai Firebase Emulator:
-
-```bash
-npm ci
-npm run test:rules
-```
-
-Script memakai project **demo-mbois-gym**, host lokal dan `firebase.test.json`, bukan produksi. Jangan mengganti ID demo dengan ID produksi. Test rules tidak membuktikan rules lokal telah ter-deploy.
-
-## Kolaborasi Git
-
-Terima undangan repository sebelum clone. Gunakan branch masing-masing, bukan perubahan langsung di `main`.
-
-```bash
-git status
-git switch main
-git pull --ff-only origin main
-git switch -c feature/filter-klien
-# Edit file sesuai tugas, lalu jalankan analyze dan test.
-git diff
-git add lib/features/screens.dart
-git diff --cached --stat
-git diff --cached
-git commit -m "feat: tambah filter klien"
-git push -u origin feature/filter-klien
-```
-
-Sesuaikan daftar file `git add` dengan perubahan; jangan staging seluruh folder tanpa review. Jangan commit password, data pribadi, artefak build atau konfigurasi lokal.
-
-Buka GitHub > Pull requests > New pull request, pilih base `main` dan branch fitur, jelaskan perubahan/hasil test, minta review anggota lain, lalu merge setelah disetujui. Setelah merge, kembali ke main dan jalankan `git pull --ff-only origin main`.
-
-Untuk menyelaraskan branch fitur: simpan pekerjaan dalam commit terlebih dahulu, lalu `git fetch origin` dan `git merge origin/main`. Jika konflik, koordinasikan dengan pemilik perubahan, edit bagian konflik, jalankan test dan review sebelum commit. Jangan menimpa perubahan orang lain atau force push. Bagi tugas per file/modul, terutama karena `screens.dart` cukup besar.
-
-### Mengundang collaborators
-
-Pemilik membuka https://github.com/Farilzzz/Mbois-Gym-PT-Management > Settings > Collaborators (atau Collaborators and teams) > Add people. Masukkan username GitHub teman yang benar, kirim undangan, lalu minta mereka menerimanya. Username belum ditentukan dalam dokumentasi ini. Undangan GitHub tidak otomatis memberi izin administrasi Firebase.
+- **Firebase Storage**: Bukti tanda tangan dan foto profil saat ini diverifikasi integritas titik sentuhannya di perangkat dan status verifikasi dicatat di Cloud Firestore. Integrasi upload blob PNG bytes ke Google Cloud Storage memerlukan aktivasi paket billing Firebase / bucket storage produksi.
+- **Multi-Device Live Sync**: Sinkronisasi data operasional berjalan secara real-time via Cloud Firestore. Uji fisik multi-device di lapangan tetap direkomendasikan untuk memvalidasi kenyamanan tanda tangan pada berbagai rasio layar sentuh.

@@ -9,7 +9,8 @@ import '../data/exercise_api_service.dart';
 
 import '../app.dart';
 import '../data/app_database.dart';
-import '../widgets/touch_signature_pad.dart';
+import '../data/pt_packages.dart';
+import '../widgets/dedicated_signature_dialog.dart';
 import '../design_system/app_design_system.dart';
 
 // Palette definitions matching Mbois Gym Figma
@@ -264,9 +265,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: 16),
                 Center(
                   child: OutlinedButton.icon(
-                    icon: const Icon(Icons.archive_outlined, size: 18),
+                    icon: const Icon(Icons.history_edu_outlined, size: 18),
                     label: const Text(
-                      'Buka Arsip Offline (Data Historis Lokal)',
+                      'Buka Riwayat & Arsip Latihan',
                     ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: isDark
@@ -281,7 +282,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      "Don’t have account ? ",
+                      'Belum punya akun? ',
                       style: TextStyle(
                         color: isDark ? Colors.white60 : AppColors.textMuted,
                         fontSize: 14,
@@ -290,7 +291,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     GestureDetector(
                       onTap: () => context.push('/setup'),
                       child: const Text(
-                        'Sign Up',
+                        'Informasi Akun',
                         style: TextStyle(
                           color: AppColors.vibrantBlue,
                           fontWeight: FontWeight.bold,
@@ -309,152 +310,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-class SetupScreen extends ConsumerStatefulWidget {
+class SetupScreen extends StatelessWidget {
   const SetupScreen({super.key});
-  @override
-  ConsumerState<SetupScreen> createState() => _SetupScreenState();
-}
-
-class _SetupScreenState extends ConsumerState<SetupScreen> {
-  final _name = TextEditingController();
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  bool _loading = false;
-  String? _error;
 
   @override
-  void dispose() {
-    _name.dispose();
-    _email.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    // Perubahan krusial: Memanggil Firebase (cloudAuthProvider), bukan SQLite (authProvider)
-    final err = await ref
-        .read(cloudAuthProvider.notifier)
-        .setup(_name.text, _email.text, _password.text);
-
-    if (mounted) {
-      setState(() {
-        _loading = false;
-        _error = err;
-      });
-      if (err == null) context.go('/dashboard');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
-      appBar: AppBar(
-        title: const Text('Sign Up Coach (Cloud)'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'WELCOME BACK,\nCOACH',
-                style: AppTypography.welcomeTitle.copyWith(
-                  color: isDark ? Colors.white : AppColors.primaryRoyalBlue,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Buat akun Personal Trainer Anda. Data akan disinkronisasikan langsung dengan cloud Firebase.',
-                style: TextStyle(
-                  color: isDark ? Colors.white60 : AppColors.textMuted,
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 28),
-              if (_error != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: AppRadius.medium,
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(color: Colors.red.shade900, fontSize: 13),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              AppCustomTextField(
-                label: 'Nama Lengkap PT',
-                controller: _name,
-                hintText: 'Coach Faril',
-                isDarkFill: true,
-              ),
-              const SizedBox(height: 16),
-              AppCustomTextField(
-                label: 'Email',
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                hintText: 'coach@mboisgym.com',
-                isDarkFill: true,
-              ),
-              const SizedBox(height: 16),
-              AppCustomTextField(
-                label: 'Password',
-                controller: _password,
-                obscureText: true,
-                hintText: 'Minimal 6 karakter',
-                isDarkFill: true,
-              ),
-              const SizedBox(height: 28),
-              AppPillButton(
-                text: 'Sign Up',
-                isLoading: _loading,
-                onPressed: _loading ? null : _submit,
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "Do you have account ? ",
-                    style: TextStyle(
-                      color: isDark ? Colors.white60 : AppColors.textMuted,
-                      fontSize: 14,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: () => context.go('/login'),
-                    child: const Text(
-                      'Log In',
-                      style: TextStyle(
-                        color: AppColors.vibrantBlue,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Informasi Akun')),
+    body: SafeArea(child: SingleChildScrollView(
+      padding: const EdgeInsets.all(28),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Icon(Icons.admin_panel_settings_outlined,
+          size: 64, color: AppColors.vibrantBlue),
+        const SizedBox(height: 24),
+        const Text('Akun disediakan administrator',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        const Text('Hubungi admin Mbois Gym untuk provisioning akun trainer atau manager. '
+          'Pendaftaran publik tidak tersedia. Peran dan status akun hanya dikelola admin.'),
+        const SizedBox(height: 24),
+        AppPillButton(text: 'Kembali ke Login', onPressed: () => context.go('/login')),
+      ]),
+    )),
+  );
 }
 
 class DashboardScreen extends ConsumerWidget {
@@ -1091,7 +968,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
   final _medical = TextEditingController(text: 'Tidak ada');
   final _injury = TextEditingController(text: 'Tidak ada');
   final _notes = TextEditingController();
-  int _selectedPackage = 8;
+  PtPackageTier _selectedTier = PtPackageTier.tier10;
   bool _saving = false;
 
   @override
@@ -1119,7 +996,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
         trainerId: trainerId,
         name: _name.text,
         age: int.parse(_age.text),
-        sessionsCount: _selectedPackage,
+        sessionsCount: _selectedTier.sessionsCount,
         contact: _contact.text,
         height: double.tryParse(_height.text),
         weight: double.tryParse(_weight.text),
@@ -1128,6 +1005,25 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
         injury: _injury.text,
         notes: _notes.text,
       );
+
+      // Catat transaksi penjualan paket resmi PT
+      try {
+        final currentCloudUser = ref.read(cloudAuthProvider).value;
+        await db.recordPackageSale(PackageSaleRecord(
+          id: 'sale_${DateTime.now().millisecondsSinceEpoch}_$clientId',
+          clientId: clientId.toString(),
+          clientName: _name.text.trim(),
+          trainerId: currentCloudUser?.uid ?? 'pt_$trainerId',
+          trainerName: currentCloudUser?.name ?? 'Coach',
+          tierName: _selectedTier.name,
+          sessionsCount: _selectedTier.sessionsCount,
+          durationWeeks: _selectedTier.durationWeeks,
+          price: _selectedTier.price,
+          timestamp: DateTime.now(),
+          status: 'valid',
+        ));
+      } catch (_) {}
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1263,16 +1159,19 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
             ),
             const SizedBox(height: 24),
             const Text(
-              'Pilihan Paket Personal Training',
+              'Pilihan Paket Resmi Personal Training',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
             Wrap(
-              spacing: 12,
-              children: [8, 12, 16].map((count) {
-                final selected = _selectedPackage == count;
+              spacing: 10,
+              runSpacing: 10,
+              children: PtPackageTier.officialTiers.map((tier) {
+                final selected = _selectedTier.id == tier.id;
                 return ChoiceChip(
-                  label: Text('$count Sesi'),
+                  label: Text(
+                    '${tier.name} (${tier.durationWeeks} Mg) • ${tier.formattedPrice}',
+                  ),
                   selected: selected,
                   selectedColor: AppColors.vibrantBlue,
                   backgroundColor: isDark
@@ -1285,7 +1184,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                   onSelected: (val) {
-                    if (val) setState(() => _selectedPackage = count);
+                    if (val) setState(() => _selectedTier = tier);
                   },
                 );
               }).toList(),
@@ -1405,7 +1304,7 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen>
   }
 }
 
-class _AttendanceTab extends ConsumerWidget {
+class _AttendanceTab extends ConsumerStatefulWidget {
   const _AttendanceTab({
     required this.client,
     required this.package,
@@ -1416,7 +1315,18 @@ class _AttendanceTab extends ConsumerWidget {
   final VoidCallback? onRefresh;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AttendanceTab> createState() => _AttendanceTabState();
+}
+
+class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
+  String _selectedStatus = 'Aktif';
+
+  Client get client => widget.client;
+  PtPackage get package => widget.package;
+  VoidCallback? get onRefresh => widget.onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
     final db = ref.watch(gymRepositoryProvider);
 
     return FutureBuilder(
@@ -1430,6 +1340,20 @@ class _AttendanceTab extends ConsumerWidget {
         }
         final sessions = snapshot.data![0] as List<Session>;
         final completed = snapshot.data![1] as int;
+
+        final List<Session> displayedSessions;
+        if (_selectedStatus == 'Aktif') {
+          displayedSessions =
+              sessions.where((s) => s.status == 'scheduled').toList();
+        } else if (_selectedStatus == 'Hadir') {
+          displayedSessions =
+              sessions.where((s) => s.status == 'completed').toList();
+        } else if (_selectedStatus == 'Dibatalkan') {
+          displayedSessions =
+              sessions.where((s) => s.status == 'cancelled').toList();
+        } else {
+          displayedSessions = sessions;
+        }
 
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -1546,19 +1470,20 @@ class _AttendanceTab extends ConsumerWidget {
                                 const SizedBox(height: 12),
                                 DropdownButtonFormField<int>(
                                   initialValue: selectedSessions,
-                                  items: const [
-                                    DropdownMenuItem(
-                                      value: 8,
-                                      child: Text('8 Sesi'),
+                                  items: [
+                                    ...PtPackageTier.officialTiers.map(
+                                      (t) => DropdownMenuItem(
+                                        value: t.sessionsCount,
+                                        child: Text(
+                                          '${t.name} (${t.durationWeeks} Mg) - ${t.formattedPrice}',
+                                        ),
+                                      ),
                                     ),
-                                    DropdownMenuItem(
-                                      value: 12,
-                                      child: Text('12 Sesi'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 16,
-                                      child: Text('16 Sesi'),
-                                    ),
+                                    if (!PtPackageTier.officialTiers.any((t) => t.sessionsCount == selectedSessions))
+                                      DropdownMenuItem(
+                                        value: selectedSessions,
+                                        child: Text('$selectedSessions Sesi'),
+                                      ),
                                   ],
                                   onChanged: (v) {
                                     if (v != null) {
@@ -1591,6 +1516,33 @@ class _AttendanceTab extends ConsumerWidget {
                       if (chosen != null) {
                         try {
                           await db.renewPackage(client.id, chosen);
+                          final matchingTier = PtPackageTier.officialTiers.firstWhere(
+                            (t) => t.sessionsCount == chosen,
+                            orElse: () => PtPackageTier(
+                              id: 'pt_pkg_$chosen',
+                              name: 'Paket $chosen Sesi',
+                              sessionsCount: chosen,
+                              durationWeeks: 4,
+                              price: chosen * 100000,
+                            ),
+                          );
+                          try {
+                            final currentCloudUser = ref.read(cloudAuthProvider).value;
+                            await db.recordPackageSale(PackageSaleRecord(
+                              id: 'sale_${DateTime.now().millisecondsSinceEpoch}_${client.id}',
+                              clientId: client.id.toString(),
+                              clientName: client.name,
+                              trainerId: currentCloudUser?.uid ?? 'pt_${client.trainerId}',
+                              trainerName: currentCloudUser?.name ?? 'Coach',
+                              tierName: matchingTier.name,
+                              sessionsCount: matchingTier.sessionsCount,
+                              durationWeeks: matchingTier.durationWeeks,
+                              price: matchingTier.price,
+                              timestamp: DateTime.now(),
+                              status: 'valid',
+                            ));
+                          } catch (_) {}
+
                           onRefresh?.call();
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -1656,47 +1608,124 @@ class _AttendanceTab extends ConsumerWidget {
                   ),
               ],
             ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              children: ['Aktif', 'Hadir', 'Dibatalkan', 'Semua'].map((st) {
+                final isSel = _selectedStatus == st;
+                return ChoiceChip(
+                  label: Text(st),
+                  selected: isSel,
+                  selectedColor: kMboisTeal,
+                  labelStyle: TextStyle(
+                    color: isSel ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  onSelected: (val) {
+                    if (val) setState(() => _selectedStatus = st);
+                  },
+                );
+              }).toList(),
+            ),
             const SizedBox(height: 12),
-            if (sessions.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
+            if (displayedSessions.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(24),
                 child: Center(
                   child: Text(
-                    'Belum ada sesi dijadwalkan. Klik "Jadwalkan Sesi" untuk memulai.',
+                    _selectedStatus == 'Aktif'
+                        ? 'Tidak ada sesi aktif dijadwalkan. Klik "Jadwalkan Sesi" untuk memulai.'
+                        : _selectedStatus == 'Dibatalkan'
+                            ? 'Tidak ada sesi yang dibatalkan.'
+                            : _selectedStatus == 'Hadir'
+                                ? 'Belum ada sesi yang hadir/selesai.'
+                                : 'Belum ada data sesi.',
                   ),
                 ),
               )
             else
-              ...sessions.map(
+              ...displayedSessions.map(
                 (s) => Card(
                   margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: s.status == 'completed'
-                          ? kMboisTeal
-                          : Colors.grey.shade300,
-                      foregroundColor: s.status == 'completed'
-                          ? Colors.white
-                          : Colors.black87,
-                      child: Text('${s.sessionNumber}'),
-                    ),
-                    title: Text(
-                      'Sesi ${s.sessionNumber} • ${s.scheduledAt.day}/${s.scheduledAt.month}/${s.scheduledAt.year} ${s.scheduledAt.hour.toString().padLeft(2, '0')}:${s.scheduledAt.minute.toString().padLeft(2, '0')}',
-                    ),
-                    subtitle: Text(
-                      'Status: ${s.status.toUpperCase()} ${s.notes.isNotEmpty ? "• ${s.notes}" : ""}',
-                    ),
-                    trailing:
-                        s.status == 'scheduled' && package.status == 'active'
-                        ? ElevatedButton(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: s.status == 'completed'
+                              ? kMboisTeal
+                              : s.status == 'cancelled'
+                                  ? Colors.red.shade100
+                                  : Colors.grey.shade300,
+                          foregroundColor: s.status == 'completed'
+                              ? Colors.white
+                              : s.status == 'cancelled'
+                                  ? Colors.red.shade900
+                                  : Colors.black87,
+                          child: Text('${s.sessionNumber}'),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Sesi ${s.sessionNumber} • ${s.scheduledAt.day}/${s.scheduledAt.month}/${s.scheduledAt.year} ${s.scheduledAt.hour.toString().padLeft(2, '0')}:${s.scheduledAt.minute.toString().padLeft(2, '0')}',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Status: ${s.status == 'completed' ? 'HADIR' : s.status == 'cancelled' ? 'DIBATALKAN' : 'DIJADWALKAN'}${s.notes.isNotEmpty ? " • ${s.notes}" : ""}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: s.status == 'completed'
+                                      ? kMboisTeal
+                                      : s.status == 'cancelled'
+                                          ? Colors.red
+                                          : Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (s.status == 'scheduled' && package.status == 'active') ...[
+                          OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed: () => _cancelSession(context, s),
+                            child: const Text('Batalkan Sesi'),
+                          ),
+                          const SizedBox(width: 6),
+                          ElevatedButton(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: kMboisTeal,
                               foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              visualDensity: VisualDensity.compact,
                             ),
-                            onPressed: () => _confirmDeduction(context, ref, s),
+                            onPressed: () => _confirmDeduction(context, s),
                             child: const Text('Potong Sesi'),
-                          )
-                        : const Icon(Icons.check_circle, color: kMboisTeal),
+                          ),
+                        ] else if (s.status == 'completed') ...[
+                          const Chip(
+                            label: Text('Hadir', style: TextStyle(color: Colors.white, fontSize: 11)),
+                            backgroundColor: kMboisTeal,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ] else if (s.status == 'cancelled') ...[
+                          Chip(
+                            label: const Text('Dibatalkan', style: TextStyle(color: Colors.red, fontSize: 11)),
+                            backgroundColor: Colors.red.shade50,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1706,29 +1735,82 @@ class _AttendanceTab extends ConsumerWidget {
     );
   }
 
-  void _confirmDeduction(BuildContext context, WidgetRef ref, Session session) {
+  Future<void> _cancelSession(BuildContext context, Session s) async {
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Batalkan Sesi ${s.sessionNumber}?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Sesi ini akan dibatalkan dan langsung dipindahkan dari daftar sesi aktif. '
+              'Kuota paket klien tidak akan berkurang.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Alasan Pembatalan (Opsional)',
+                hintText: 'Contoh: Klien sakit / reschedule',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Konfirmasi Batalkan'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final db = ref.read(gymRepositoryProvider);
+      final ok = await db.cancelSession(
+        s.id,
+        cancelReason: reasonController.text.trim().isEmpty
+            ? 'Dibatalkan oleh PT'
+            : reasonController.text.trim(),
+      );
+      if (ok) {
+        onRefresh?.call();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Sesi ${s.sessionNumber} berhasil dibatalkan.')),
+          );
+        }
+      }
+    }
+  }
+
+  void _confirmDeduction(BuildContext context, Session session) {
     final noteController = TextEditingController(
       text: 'Hadir latihan sesuai jadwal',
     );
-    final clientSig = TouchSignatureController();
-    final coachSig = TouchSignatureController();
+    DedicatedSignatureResult? clientSig;
+    DedicatedSignatureResult? coachSig;
+    bool isSubmitting = false;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (dialogCtx, setDialogState) {
-          clientSig.addListener(() {
-            if (dialogCtx.mounted) setDialogState(() {});
-          });
-          coachSig.addListener(() {
-            if (dialogCtx.mounted) setDialogState(() {});
-          });
-          final isReady = clientSig.hasSignature && coachSig.hasSignature;
+          final isReady = clientSig != null && coachSig != null;
 
           return AlertDialog(
             title: Text(
               'Sesi ${session.sessionNumber}: Tanda Tangan & Absensi',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             content: SizedBox(
               width: double.maxFinite,
@@ -1741,59 +1823,137 @@ class _AttendanceTab extends ConsumerWidget {
                       'Klien: ${client.name}',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    Text('Jadwal: ${session.scheduledAt}'),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.amber.shade700),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.info_outline,
-                                size: 16,
-                                color: Colors.amber.shade900,
+                    Text(
+                      'Jadwal: ${session.scheduledAt.day}/${session.scheduledAt.month}/${session.scheduledAt.year} '
+                      '${session.scheduledAt.hour.toString().padLeft(2, '0')}:${session.scheduledAt.minute.toString().padLeft(2, '0')}',
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Klien Signature Section
+                    if (clientSig == null)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade300),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '1. Tanda Tangan Klien (${client.name}) *',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Sentuh tombol di bawah untuk membuka kanvas tanda tangan khusus.',
+                              style: TextStyle(fontSize: 11, color: Colors.black54),
+                            ),
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.draw, size: 16),
+                              label: const Text('Buka Pad Tanda Tangan Klien'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: kMboisTeal,
+                                foregroundColor: Colors.white,
                               ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Ketentuan Tanda Tangan Digital',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                  color: Colors.amber.shade900,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Wajib ditandatangani oleh Klien dan Coach menggunakan jari. '
-                            'Karena Firebase Storage belum diaktifkan (tanpa billing), bukti tanda tangan '
-                            'diverifikasi di perangkat dan status verifikasi dicatat di Cloud Firestore.',
-                            style: TextStyle(fontSize: 11),
-                          ),
-                        ],
+                              onPressed: () async {
+                                final res = await DedicatedSignatureDialog.show(
+                                  dialogCtx,
+                                  title: 'Tanda Tangan Klien',
+                                  signerLabel: 'Klien: ${client.name}',
+                                );
+                                if (res != null) {
+                                  setDialogState(() => clientSig = res);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      SignaturePreviewCard(
+                        signature: clientSig,
+                        signerLabel: 'Tanda Tangan Klien (${client.name})',
+                        onEdit: () async {
+                          final res = await DedicatedSignatureDialog.show(
+                            dialogCtx,
+                            title: 'Tanda Tangan Klien',
+                            signerLabel: 'Klien: ${client.name}',
+                            initialStrokes: clientSig?.strokes,
+                          );
+                          if (res != null) {
+                            setDialogState(() => clientSig = res);
+                          }
+                        },
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    TouchSignaturePad(
-                      controller: clientSig,
-                      signerLabel: 'Tanda Tangan Klien (Jari)',
-                      height: 110,
-                    ),
-                    const SizedBox(height: 12),
-                    TouchSignaturePad(
-                      controller: coachSig,
-                      signerLabel: 'Tanda Tangan Coach / PT (Jari)',
-                      height: 110,
-                    ),
-                    const SizedBox(height: 12),
+
+                    const SizedBox(height: 14),
+
+                    // Coach Signature Section
+                    if (coachSig == null)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.shade300),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '2. Tanda Tangan Coach / PT *',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Sentuh tombol di bawah untuk membubuhkan verifikasi pelatih.',
+                              style: TextStyle(fontSize: 11, color: Colors.black54),
+                            ),
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.draw, size: 16),
+                              label: const Text('Buka Pad Tanda Tangan Coach'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.vibrantBlue,
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: () async {
+                                final res = await DedicatedSignatureDialog.show(
+                                  dialogCtx,
+                                  title: 'Tanda Tangan Coach / PT',
+                                  signerLabel: 'Coach / Personal Trainer',
+                                );
+                                if (res != null) {
+                                  setDialogState(() => coachSig = res);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      SignaturePreviewCard(
+                        signature: coachSig,
+                        signerLabel: 'Tanda Tangan Coach / PT',
+                        onEdit: () async {
+                          final res = await DedicatedSignatureDialog.show(
+                            dialogCtx,
+                            title: 'Tanda Tangan Coach / PT',
+                            signerLabel: 'Coach / Personal Trainer',
+                            initialStrokes: coachSig?.strokes,
+                          );
+                          if (res != null) {
+                            setDialogState(() => coachSig = res);
+                          }
+                        },
+                      ),
+
+                    const SizedBox(height: 14),
                     TextField(
                       controller: noteController,
                       decoration: const InputDecoration(
@@ -1807,7 +1967,7 @@ class _AttendanceTab extends ConsumerWidget {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(ctx),
+                onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
                 child: const Text('Batal'),
               ),
               ElevatedButton(
@@ -1815,40 +1975,43 @@ class _AttendanceTab extends ConsumerWidget {
                   backgroundColor: isReady ? kMboisTeal : Colors.grey,
                   foregroundColor: Colors.white,
                 ),
-                onPressed: () async {
-                  if (!clientSig.hasSignature || !coachSig.hasSignature) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Klien dan Coach wajib membubuhkan tanda tangan dengan jari sebelum pemotongan sesi!',
+                onPressed: (!isReady || isSubmitting)
+                    ? null
+                    : () async {
+                        setDialogState(() => isSubmitting = true);
+                        final repo = ref.read(gymRepositoryProvider);
+                        try {
+                          await repo.completeSession(session.id, noteController.text);
+                          if (context.mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Sesi berhasil diverifikasi dan kuota dipotong secara aman via Cloud Firestore.',
+                                ),
+                              ),
+                            );
+                            onRefresh?.call();
+                          }
+                        } catch (e) {
+                          if (dialogCtx.mounted) {
+                            setDialogState(() => isSubmitting = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Gagal menyelesaikan sesi: $e')),
+                            );
+                          }
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
                         ),
-                      ),
-                    );
-                    return;
-                  }
-                  final repo = ref.read(gymRepositoryProvider);
-                  try {
-                    await repo.completeSession(session.id, noteController.text);
-                    if (context.mounted) {
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Sesi berhasil diselesaikan dan 1 kuota dipotong secara aman via Cloud Firestore.',
-                          ),
-                        ),
-                      );
-                      onRefresh?.call();
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Gagal menyelesaikan sesi: $e')),
-                      );
-                    }
-                  }
-                },
-                child: const Text('Verifikasi & Potong Sesi'),
+                      )
+                    : const Text('Verifikasi & Potong Sesi'),
               ),
             ],
           );
@@ -4446,6 +4609,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void _showEditCloudProfileDialog(BuildContext context, CloudProfile profile) {
     final nameController = TextEditingController(text: profile.name);
     final phoneController = TextEditingController(text: profile.phone);
+    final professional = <String, TextEditingController>{
+      'heightCm': TextEditingController(text: profile.heightCm?.toString() ?? ''),
+      'weightKg': TextEditingController(text: profile.weightKg?.toString() ?? ''),
+      'specialization': TextEditingController(text: profile.specialization),
+      'experienceYears': TextEditingController(text: profile.experienceYears?.toString() ?? ''),
+      'certifications': TextEditingController(text: profile.certifications),
+      'bio': TextEditingController(text: profile.bio),
+      'photoUrl': TextEditingController(text: profile.photoUrl ?? ''),
+    };
+    const labels = {
+      'heightCm': 'Tinggi Badan (cm)', 'weightKg': 'Berat Badan (kg)',
+      'specialization': 'Spesialisasi', 'experienceYears': 'Pengalaman (tahun)',
+      'certifications': 'Sertifikasi', 'bio': 'Bio', 'photoUrl': 'URL Foto (opsional)',
+    };
     final formKey = GlobalKey<FormState>();
     bool saving = false;
     String? errorText;
@@ -4526,6 +4703,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       return null;
                     },
                   ),
+                  Text('Peran Administratif: ${profile.role} (hanya admin)'),
+                  Text('Status Akun: ${profile.status} (hanya admin)'),
+                  for (final entry in professional.entries)
+                    TextFormField(
+                      controller: entry.value,
+                      decoration: InputDecoration(labelText: labels[entry.key]),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) return null;
+                        if (entry.key == 'heightCm' || entry.key == 'weightKg') {
+                          final n = double.tryParse(value);
+                          if (n == null || !n.isFinite || n <= 0) return 'Masukkan angka positif';
+                        }
+                        if (entry.key == 'experienceYears') {
+                          final n = int.tryParse(value);
+                          if (n == null || n < 0) return 'Masukkan tahun valid';
+                        }
+                        return null;
+                      },
+                    ),
                 ],
               ),
             ),
@@ -4554,6 +4750,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             .updateProfile(
                               displayName: nameController.text.trim(),
                               phone: phoneController.text.trim(),
+                              heightCm: double.tryParse(professional['heightCm']!.text),
+                              weightKg: double.tryParse(professional['weightKg']!.text),
+                              experienceYears: int.tryParse(professional['experienceYears']!.text),
+                              specialization: professional['specialization']!.text.trim(),
+                              certifications: professional['certifications']!.text.trim(),
+                              bio: professional['bio']!.text.trim(),
+                              photoUrl: professional['photoUrl']!.text.trim(),
                             );
                         if (err != null) {
                           setDialogState(() {
@@ -4671,9 +4874,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Text(
-                      'Active Trainer • Firebase Production',
-                      style: TextStyle(
+                    child: Text(
+                      '${cloudUser.role} • ${cloudUser.status}',
+                      style: const TextStyle(
                         fontSize: 12,
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -4773,6 +4976,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
+                          Text('Tinggi: ${cloudUser.heightCm ?? "—"} cm'),
+                          Text('Berat: ${cloudUser.weightKg ?? "—"} kg'),
+                          Text('Spesialisasi: ${cloudUser.specialization}'),
+                          Text('Pengalaman: ${cloudUser.experienceYears ?? "—"} tahun'),
+                          Text('Sertifikasi: ${cloudUser.certifications}'),
+                          Text('Bio: ${cloudUser.bio}'),
                           AppPillButton(
                             text: 'EDIT PROFIL',
                             backgroundColor: AppColors.cyanAccent,
@@ -4838,9 +5047,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         Icons.archive_outlined,
                         color: AppColors.vibrantBlue,
                       ),
-                      title: const Text('Arsip Data Lokal (SQLite)'),
+                      title: const Text('Riwayat & Arsip Latihan'),
                       subtitle: const Text(
-                        'Data historis perangkat lokal terpisah dari cloud',
+                        'Catatan riwayat latihan dan arsip sesi',
                       ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => context.push('/legacy-archive'),
@@ -4948,7 +5157,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           final trainer = snapshot.data![0] as Trainer?;
           if (trainer == null) {
             return const Center(
-              child: Text('Akun Coach tidak ditemukan di database lokal.'),
+              child: Text('Akun Coach tidak ditemukan.'),
             );
           }
           final clients = snapshot.data![1] as List<Client>;
@@ -5255,9 +5464,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             Icons.cloud_sync_outlined,
                             color: AppColors.vibrantBlue,
                           ),
-                          title: const Text('Integrasi Firebase (Pilot Uji)'),
+                          title: const Text('Integrasi Cloud Firebase'),
                           subtitle: const Text(
-                            'Uji baca cloud • Data SQLite tetap aktif',
+                            'Status koneksi dan sinkronisasi server',
                           ),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () => context.push('/cloud-pilot'),
@@ -5357,7 +5566,7 @@ class LegacyArchiveScreen extends ConsumerWidget {
           ? const Color(0xFF121212)
           : const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Arsip Data Lokal (SQLite)'),
+        title: const Text('Riwayat & Arsip Latihan'),
         backgroundColor: AppColors.primaryRoyalBlue,
         foregroundColor: Colors.white,
       ),
@@ -5393,7 +5602,7 @@ class LegacyArchiveScreen extends ConsumerWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'DATA ARSIP OFFLINE (SQLITE) • Data historis lokal tersimpan aman di perangkat dan tidak diunggah/dimigrasikan ke cloud pada fase ini tanpa verifikasi otorisasi.',
+                        'ARSIP RIWAYAT LATIHAN • Catatan historis latihan tersimpan aman sebagai arsip data dan referensi rekam jejak.',
                         style: TextStyle(
                           color: Colors.amber.shade900,
                           fontSize: 12,
@@ -5413,14 +5622,14 @@ class LegacyArchiveScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Ringkasan Data Lokal',
+                        'Ringkasan Data Riwayat',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Text('• Total Klien SQLite: ${clients.length} klien'),
+                      Text('• Total Klien Terdaftar: ${clients.length} klien'),
                       Text('• Total Paket PT: ${packages.length} paket'),
                       Text('• Total Sesi Absensi: ${sessions.length} sesi'),
                       Text('• Akun Coach Terdaftar: ${trainers.length} akun'),
@@ -5430,14 +5639,14 @@ class LegacyArchiveScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               const Text(
-                'Daftar Klien Lokal (Historis)',
+                'Daftar Klien (Arsip Historis)',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               if (clients.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(16),
-                  child: Text('Belum ada klien pada database lokal.'),
+                  child: Text('Belum ada data klien pada arsip riwayat.'),
                 )
               else
                 for (final c in clients)

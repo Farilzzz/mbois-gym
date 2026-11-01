@@ -11,7 +11,9 @@ void main() {
     final fields = tester
         .widgetList<TextField>(find.byType(TextField))
         .toList();
-    expect(fields.last.controller!.text, isEmpty);
+    for (final field in fields) {
+      expect(field.controller?.text ?? '', isEmpty);
+    }
     expect(find.text('Default demo: MboisGym2026!'), findsNothing);
   });
 }
