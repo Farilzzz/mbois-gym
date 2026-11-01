@@ -17,7 +17,10 @@ class MockCloudGateway implements CloudGateway {
   String? currentUid;
   String? lastResetEmail;
   bool updateProfileCalled = false;
-
+  @override
+  Future<void> signUp(String email, String password, String name) async {
+    // Implementasi dummy untuk melewati error testing
+  }
   @override
   Stream<String?> get authChanges => _authController.stream;
 

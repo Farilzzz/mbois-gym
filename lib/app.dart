@@ -57,6 +57,10 @@ class _OfflineCloudGateway implements CloudGateway {
   @override
   Future<void> signIn(String email, String password) async =>
       throw StateError('Firebase tidak tersedia pada lingkungan ini.');
+      
+  @override
+  Future<void> signUp(String email, String password, String name) async =>
+      throw StateError('Firebase tidak tersedia pada lingkungan ini.');
 
   @override
   Future<void> signOut() async {}
@@ -162,6 +166,23 @@ class CloudAuthController extends AsyncNotifier<CloudProfile?> {
         return 'Koneksi jaringan gagal. Periksa koneksi internet Anda.';
       }
       return 'Gagal masuk: Periksa kembali email dan password.';
+    }
+  }
+
+  Future<String?> setup(String name, String email, String password) async {
+    state = const AsyncLoading();
+    final cleanEmail = email.trim();
+    if (name.trim().isEmpty || !cleanEmail.contains('@') || password.length < 6) {
+      state = const AsyncData(null);
+      return 'Nama, email valid, dan password minimal 6 karakter wajib diisi.';
+    }
+    try {
+      final gateway = await ref.read(cloudGatewayProvider.future);
+      await gateway.signUp(cleanEmail, password, name);
+      return await login(cleanEmail, password);
+    } catch (e) {
+      state = const AsyncData(null);
+      return 'Gagal mendaftar ke Firebase: ${e.toString().split(']').last.trim()}';
     }
   }
 
@@ -365,9 +386,7 @@ class AuthController extends AsyncNotifier<int?> {
       )..where((t) => t.id.equals(id))).getSingleOrNull();
       if (trainer != null) return id;
       await ref.read(authStorageProvider).deleteTrainerId();
-    } catch (_) {
-      // Storage may be unavailable after backup/restore or device lock.
-    }
+    } catch (_) {}
     return null;
   }
 
@@ -429,9 +448,7 @@ class AuthController extends AsyncNotifier<int?> {
   Future<void> logout() async {
     try {
       await ref.read(authStorageProvider).deleteTrainerId();
-    } catch (_) {
-      // Clear in-memory authentication even if secure storage is unavailable.
-    }
+    } catch (_) {}
     state = const AsyncData(null);
   }
 }

@@ -29,6 +29,7 @@ abstract interface class CloudGateway {
   String? get currentUid;
   Future<CloudProfile?> profile(String uid);
   Future<void> signIn(String email, String password);
+  Future<void> signUp(String email, String password, String name);
   Future<void> signOut();
   Future<void> resetPassword(String email);
   Future<void> changePassword(String oldPassword, String newPassword);

@@ -64,6 +64,24 @@ class FirebaseCloudGateway implements CloudGateway {
       auth.signInWithEmailAndPassword(email: email.trim(), password: password);
 
   @override
+  Future<void> signUp(String email, String password, String name) async {
+    final cred = await auth.createUserWithEmailAndPassword(
+        email: email.trim(), password: password);
+    
+    final uid = cred.user?.uid;
+    if (uid != null) {
+      await firestore.collection('users').doc(uid).set({
+        'name': name.trim(),
+        'displayName': name.trim(),
+        'email': email.trim(),
+        'role': 'trainer',
+        'status': 'active',
+        'phone': '',
+      });
+    }
+  }
+
+  @override
   Future<void> signOut() => auth.signOut();
 
   @override

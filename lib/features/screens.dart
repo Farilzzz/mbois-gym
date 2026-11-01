@@ -102,6 +102,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _loading = false;
         _error = err;
       });
+      if (err == null) {
+        context.go('/dashboard');
+      }
     }
   }
 
@@ -332,9 +335,12 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       _loading = true;
       _error = null;
     });
+
+    // Perubahan krusial: Memanggil Firebase (cloudAuthProvider), bukan SQLite (authProvider)
     final err = await ref
-        .read(authProvider.notifier)
+        .read(cloudAuthProvider.notifier)
         .setup(_name.text, _email.text, _password.text);
+
     if (mounted) {
       setState(() {
         _loading = false;
@@ -351,7 +357,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
       appBar: AppBar(
-        title: const Text('Sign Up Coach'),
+        title: const Text('Sign Up Coach (Cloud)'),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -369,7 +375,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Password disimpan sebagai salted hash PBKDF2 HMAC-SHA256 (bukan enkripsi) pada database SQLite lokal perangkat ini.',
+                'Buat akun Personal Trainer Anda. Data akan disinkronisasikan langsung dengan cloud Firebase.',
                 style: TextStyle(
                   color: isDark ? Colors.white60 : AppColors.textMuted,
                   fontSize: 13,
@@ -1128,7 +1134,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
             content: Text('Client dan Paket PT berhasil disimpan!'),
           ),
         );
-        context.go('/clients/$clientId');
+        context.pushReplacement('/clients/$clientId');
       }
     } catch (e) {
       if (mounted) {
@@ -1332,6 +1338,19 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen>
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (GoRouter.of(context).canPop()) {
+              context.pop(); // Kembali ke halaman sebelumnya jika ada riwayat
+            } else {
+              context.go(
+                '/clients',
+              ); // Paksa kembali ke menu Klien jika tidak ada riwayat
+            }
+          },
+        ),
+
         title: const Text(
           'Detail Client PT',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -1350,6 +1369,7 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen>
           ],
         ),
       ),
+
       body: FutureBuilder(
         key: ValueKey(_refreshCount),
         future: Future.wait([
@@ -2942,9 +2962,15 @@ class _AssessmentTabState extends ConsumerState<_AssessmentTab> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Data Asesmen & Profil Klien',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Expanded(
+              child: Text(
+                'Data Asesmen & Profil Klien',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis, // 2. TAMBAHKAN POTONGAN TEKS INI
+              ),
             ),
             TextButton.icon(
               icon: Icon(_isEditing ? Icons.close : Icons.edit),
@@ -3888,6 +3914,7 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
                     builder: (context, sessSnapshot) {
                       final sessions = sessSnapshot.data ?? [];
                       return DropdownButtonFormField<int?>(
+                        isExpanded: true,
                         initialValue: _selectedSessionId,
                         decoration: const InputDecoration(
                           labelText: 'Pilih Sesi Appointment (Opsional)',
@@ -3898,6 +3925,7 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
                             value: null,
                             child: Text(
                               'Tanpa Sesi Terjadwal (Latihan Tambahan)',
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           ...sessions.map(
@@ -3905,6 +3933,7 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
                               value: s.id,
                               child: Text(
                                 'Sesi ${s.sessionNumber} (${s.scheduledAt.day}/${s.scheduledAt.month}/${s.scheduledAt.year})',
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ),
