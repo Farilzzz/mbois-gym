@@ -704,18 +704,20 @@ class SignaturePreviewCard extends StatelessWidget {
                     ),
             ),
           ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: OutlinedButton.icon(
-              onPressed: onEdit,
-              icon: const Icon(Icons.edit, size: 14),
-              label: const Text(
-                'Ubah Tanda Tangan',
-                style: TextStyle(fontSize: 12),
+          if (onEdit != null) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit, size: 14),
+                label: const Text(
+                  'Ubah Tanda Tangan',
+                  style: TextStyle(fontSize: 12),
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

@@ -85,6 +85,21 @@ class FakeGymRepository implements GymRepository {
   Future<PtPackage?> currentPackage(int clientId) => activePackage(clientId);
 
   @override
+  Future<PtPackage?> latestPackage(int clientId) async {
+    final list = packages[clientId] ?? [];
+    return list.isNotEmpty ? list.last : null;
+  }
+
+  @override
+  Future<String> getClientLifecycleStatus(int clientId) async {
+    final pkg = await latestPackage(clientId);
+    if (pkg == null) return 'completed';
+    if (pkg.status == 'cancelled') return 'cancelled';
+    if (pkg.status == 'closed') return 'completed';
+    return 'active';
+  }
+
+  @override
   Future<List<Session>> packageSessions(int packageId) async {
     return List.unmodifiable(sessions[packageId] ?? []);
   }
@@ -134,7 +149,49 @@ class FakeGymRepository implements GymRepository {
   }
 
   @override
-  Future<bool> completeSession(int sessionId, String notes) async {
+  Future<bool> rescheduleSession(
+    int sessionId,
+    DateTime time, {
+    String? rescheduledBy,
+    String? reason,
+    String? notes,
+  }) async {
+    for (final entry in sessions.entries) {
+      for (int i = 0; i < entry.value.length; i++) {
+        final s = entry.value[i];
+        if (s.id == sessionId) {
+          if (s.status != 'scheduled') return false;
+          entry.value[i] = Session(
+            id: s.id,
+            packageId: s.packageId,
+            sessionNumber: s.sessionNumber,
+            scheduledAt: time,
+            status: 'scheduled',
+            notes: notes ?? reason ?? s.notes,
+          );
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  final Map<int, Map<String, dynamic>> _sessionDetails = {};
+
+  @override
+  Future<Map<String, dynamic>?> getSessionDetails(int sessionId) async {
+    return _sessionDetails[sessionId];
+  }
+
+  @override
+  Future<bool> completeSession(
+    int sessionId,
+    String notes, {
+    List<List<Offset>>? clientStrokes,
+    List<List<Offset>>? coachStrokes,
+    String? clientName,
+    String? trainerName,
+  }) async {
     for (final entry in sessions.entries) {
       for (int i = 0; i < entry.value.length; i++) {
         final s = entry.value[i];
@@ -149,6 +206,15 @@ class FakeGymRepository implements GymRepository {
             status: 'completed',
             notes: notes,
           );
+          _sessionDetails[sessionId] = {
+            'clientSignatureStrokes': clientStrokes,
+            'coachSignatureStrokes': coachStrokes,
+            'clientName': clientName,
+            'trainerName': trainerName,
+            'notes': notes,
+            'status': 'completed',
+            'completedAt': DateTime.now(),
+          };
           return true;
         }
       }

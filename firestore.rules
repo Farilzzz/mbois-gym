@@ -45,7 +45,10 @@ service cloud.firestore {
       allow list: if activeManager();
       allow create, delete: if false;
       allow update: if (signedIn() && request.auth.uid == uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phone']))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'displayName', 'phone', 'heightCm', 'weightKg', 'specialization',
+            'experienceYears', 'certifications', 'bio', 'photoUrl'
+          ]))
         || (activeManager() && resource.data.role == 'trainer'
           && request.resource.data.status in ['active', 'inactive', 'pending']
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'displayName', 'phone']));

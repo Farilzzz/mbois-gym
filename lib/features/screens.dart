@@ -422,18 +422,49 @@ class DashboardScreen extends ConsumerWidget {
         ],
       ),
       body: FutureBuilder(
-        future: Future.wait([
-          db.allClients(trainerId),
-          db.allSessionsForTrainer(trainerId),
-          db.allPackagesForTrainer(trainerId),
-        ]),
+        future: () async {
+          final clients = await db.allClients(trainerId);
+          final sessions = await db.allSessionsForTrainer(trainerId);
+          final packages = await db.allPackagesForTrainer(trainerId);
+
+          final activeList = <({Client client, PtPackage pkg, int remaining, int totalSessions})>[];
+          for (final c in clients) {
+            final lifecycle = await db.getClientLifecycleStatus(c.id);
+            if (lifecycle == 'active') {
+              final pkg = await db.currentPackage(c.id);
+              if (pkg != null && pkg.status == 'active') {
+                final completed = await db.completedCount(pkg.id);
+                final remaining = pkg.totalSessions - completed;
+                if (remaining > 0) {
+                  activeList.add((
+                    client: c,
+                    pkg: pkg,
+                    remaining: remaining,
+                    totalSessions: pkg.totalSessions,
+                  ));
+                }
+              }
+            }
+          }
+
+          return (
+            clients: clients,
+            activeClients: activeList,
+            sessions: sessions,
+            packages: packages,
+          );
+        }(),
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          final clients = snapshot.data![0] as List<Client>;
-          final sessions = snapshot.data![1] as List<Session>;
-          final packages = snapshot.data![2] as List<PtPackage>;
+          final resolved = snapshot.data!;
+          final activeClients = resolved.activeClients;
+          final sessions = resolved.sessions;
+          final packages = resolved.packages;
           final trainer = Trainer(
             id: trainerId,
             name: (cloudProfile?.name.isNotEmpty ?? false)
@@ -445,9 +476,7 @@ class DashboardScreen extends ConsumerWidget {
             passwordHash: '',
           );
 
-          final activePackages = packages
-              .where((p) => p.status == 'active')
-              .length;
+          final activePackages = activeClients.length;
           final closedPackages = packages
               .where((p) => p.status == 'closed')
               .length;
@@ -541,9 +570,12 @@ class DashboardScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Klien Aktif',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  const Expanded(
+                    child: Text(
+                      'Klien Aktif',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   TextButton(
                     onPressed: () => context.go('/clients'),
@@ -552,7 +584,7 @@ class DashboardScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              if (clients.isEmpty)
+              if (activeClients.isEmpty)
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
@@ -565,10 +597,10 @@ class DashboardScreen extends ConsumerWidget {
                             color: AppColors.textMuted,
                           ),
                           const SizedBox(height: 8),
-                          const Text('Belum ada client terdaftar.'),
+                          const Text('Belum ada klien aktif saat ini.'),
                           const SizedBox(height: 14),
                           AppDarkButton(
-                            text: 'TAMBAH CLIENT PERTAMA',
+                            text: 'TAMBAH CLIENT BARU',
                             onPressed: () => context.push('/clients/new'),
                           ),
                         ],
@@ -577,7 +609,12 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                 )
               else ...[
-                ...clients.take(4).map((c) => _ClientSummaryTile(client: c)),
+                ...activeClients.take(4).map((ac) => AppClientCard(
+                      name: ac.client.name,
+                      sessionsRemaining: ac.remaining,
+                      totalSessions: ac.totalSessions,
+                      onTapDetail: () => context.push('/clients/${ac.client.id}'),
+                    )),
                 const SizedBox(height: 12),
                 AppDarkButton(
                   text: 'TAMBAH CLIENT BARU',
@@ -629,37 +666,6 @@ class _MetricCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _ClientSummaryTile extends ConsumerWidget {
-  const _ClientSummaryTile({required this.client});
-  final Client client;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final db = ref.watch(gymRepositoryProvider);
-    return FutureBuilder(
-      future: db.currentPackage(client.id).then((pkg) async {
-        if (pkg == null) return null;
-        final sList = await db.packageSessions(pkg.id);
-        final completed = sList.where((s) => s.status == 'completed').length;
-        return (pkg: pkg, completed: completed);
-      }),
-      builder: (context, snapshot) {
-        final data = snapshot.data;
-        final totalSessions = data?.pkg.totalSessions ?? 0;
-        final completed = data?.completed ?? 0;
-        final remaining = (totalSessions - completed).clamp(0, totalSessions);
-
-        return AppClientCard(
-          name: client.name,
-          sessionsRemaining: remaining,
-          totalSessions: totalSessions,
-          onTapDetail: () => context.push('/clients/${client.id}'),
-        );
-      },
     );
   }
 }
@@ -778,12 +784,13 @@ class _ClientCategoryList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.watch(gymRepositoryProvider);
 
-    return FutureBuilder<List<(Client, PtPackage?, int)>>(
+    return FutureBuilder<List<(Client, PtPackage?, int, String)>>(
       future: Future.wait(
         clients.map((c) async {
-          final pkg = await db.currentPackage(c.id);
+          final lifecycle = await db.getClientLifecycleStatus(c.id);
+          final pkg = await db.latestPackage(c.id);
           final completed = pkg != null ? await db.completedCount(pkg.id) : 0;
-          return (c, pkg, completed);
+          return (c, pkg, completed, lifecycle);
         }),
       ),
       builder: (context, snapshot) {
@@ -791,10 +798,14 @@ class _ClientCategoryList extends ConsumerWidget {
           return const Center(child: CircularProgressIndicator());
         }
         final items = snapshot.data!.where((item) {
-          final pkg = item.$2;
-          if (pkg == null) return activeOnly;
-          if (activeOnly) return pkg.status == 'active';
-          return pkg.status == 'closed';
+          final lifecycle = item.$4;
+          if (activeOnly) {
+            return lifecycle == 'active';
+          } else {
+            return lifecycle == 'completed' ||
+                lifecycle == 'cancelled' ||
+                lifecycle == 'no_package';
+          }
         }).toList();
 
         if (items.isEmpty) {
@@ -809,7 +820,7 @@ class _ClientCategoryList extends ConsumerWidget {
                   Text(
                     activeOnly
                         ? 'Tidak ada klien aktif ditemukan.'
-                        : 'Belum ada klien yang menyelesaikan paket.',
+                        : 'Belum ada klien di riwayat/selesai.',
                     style: const TextStyle(color: kMboisMuted),
                   ),
                 ],
@@ -822,9 +833,29 @@ class _ClientCategoryList extends ConsumerWidget {
           padding: const EdgeInsets.all(12),
           itemCount: items.length,
           itemBuilder: (context, index) {
-            final (c, pkg, completed) = items[index];
+            final (c, pkg, completed, lifecycle) = items[index];
             final total = pkg?.totalSessions ?? 8;
-            final isWaitingEvaluation = activeOnly && completed == total;
+            final isCancelled = lifecycle == 'cancelled';
+            final isWaitingEvaluation =
+                activeOnly && completed >= total && !isCancelled;
+
+            final badgeColor = isCancelled
+                ? Colors.red.shade100
+                : isWaitingEvaluation
+                    ? Colors.orange.shade100
+                    : (activeOnly ? kMboisMint : Colors.grey.shade200);
+
+            final badgeTextColor = isCancelled
+                ? Colors.red.shade900
+                : isWaitingEvaluation
+                    ? Colors.orange.shade900
+                    : (activeOnly ? kMboisTeal : Colors.blueGrey);
+
+            final badgeText = isCancelled
+                ? 'Dibatalkan'
+                : isWaitingEvaluation
+                    ? 'Menunggu Post PT'
+                    : (activeOnly ? 'Aktif' : 'Selesai');
 
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
@@ -840,10 +871,10 @@ class _ClientCategoryList extends ConsumerWidget {
                       children: [
                         CircleAvatar(
                           radius: 22,
-                          backgroundColor: activeOnly
-                              ? kMboisTeal
-                              : Colors.blueGrey,
-                          foregroundColor: Colors.white,
+                          backgroundColor: isCancelled
+                              ? Colors.red.shade200
+                              : (activeOnly ? kMboisTeal : Colors.blueGrey),
+                          foregroundColor: isCancelled ? Colors.red.shade900 : Colors.white,
                           child: Text(
                             c.name.isNotEmpty ? c.name[0].toUpperCase() : 'C',
                             style: const TextStyle(fontWeight: FontWeight.bold),
@@ -877,23 +908,15 @@ class _ClientCategoryList extends ConsumerWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: isWaitingEvaluation
-                                ? Colors.orange.shade100
-                                : (activeOnly
-                                      ? kMboisMint
-                                      : Colors.grey.shade200),
+                            color: badgeColor,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            isWaitingEvaluation
-                                ? 'Menunggu Post PT'
-                                : (activeOnly ? 'Aktif' : 'Selesai'),
+                            badgeText,
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
-                              color: isWaitingEvaluation
-                                  ? Colors.orange.shade900
-                                  : (activeOnly ? kMboisTeal : Colors.blueGrey),
+                              color: badgeTextColor,
                             ),
                           ),
                         ),
@@ -1401,6 +1424,17 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
         final sessions = snapshot.data![0] as List<Session>;
         final completed = snapshot.data![1] as int;
 
+        final completedCount =
+            sessions.where((s) => s.status == 'completed').length;
+        final activeScheduledCount =
+            sessions.where((s) => s.status == 'scheduled').length;
+        final availableSlots = (package.totalSessions -
+                completedCount -
+                activeScheduledCount)
+            .clamp(0, package.totalSessions);
+        final canSchedule =
+            package.status == 'active' && availableSlots > 0;
+
         final List<Session> displayedSessions;
         if (_selectedStatus == 'Aktif') {
           displayedSessions =
@@ -1629,14 +1663,13 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Daftar Sesi',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    'Daftar Sesi (Slot: $availableSlots)',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
-                if (package.status == 'active' &&
-                    sessions.length < package.totalSessions)
+                if (canSchedule)
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
@@ -1808,9 +1841,29 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
                         if (s.status == 'scheduled' &&
                             package.status == 'active') ...[
                           const Divider(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
+                          Wrap(
+                            alignment: WrapAlignment.end,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 6,
                             children: [
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: kMboisTeal,
+                                  side: const BorderSide(color: kMboisTeal),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                icon: const Icon(Icons.edit_calendar, size: 14),
+                                label: const Text(
+                                  'Edit Jadwal',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                                onPressed: () => _editSession(context, s),
+                              ),
                               OutlinedButton.icon(
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.red,
@@ -1828,7 +1881,6 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
                                 ),
                                 onPressed: () => _cancelSession(context, s),
                               ),
-                              const SizedBox(width: 8),
                               ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: kMboisTeal,
@@ -1845,6 +1897,31 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
                                   style: TextStyle(fontSize: 11),
                                 ),
                                 onPressed: () => _confirmDeduction(context, s),
+                              ),
+                            ],
+                          ),
+                        ] else if (s.status == 'completed') ...[
+                          const Divider(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: kMboisTeal,
+                                  side: const BorderSide(color: kMboisTeal),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                icon: const Icon(Icons.history_edu, size: 14),
+                                label: const Text(
+                                  'Detail Riwayat & Tanda Tangan',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                                onPressed: () =>
+                                    _showSessionHistoryDetail(context, s),
                               ),
                             ],
                           ),
@@ -2106,7 +2183,17 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
                         setDialogState(() => isSubmitting = true);
                         final repo = ref.read(gymRepositoryProvider);
                         try {
-                          await repo.completeSession(session.id, noteController.text);
+                          final currentCoachName =
+                              ref.read(cloudAuthProvider).value?.name ??
+                                  'Coach Mbois';
+                          await repo.completeSession(
+                            session.id,
+                            noteController.text,
+                            clientStrokes: clientSig?.strokes,
+                            coachStrokes: coachSig?.strokes,
+                            clientName: client.name,
+                            trainerName: currentCoachName,
+                          );
                           if (context.mounted) {
                             Navigator.pop(ctx);
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -2141,6 +2228,253 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Future<void> _editSession(BuildContext context, Session s) async {
+    DateTime selectedDate = s.scheduledAt;
+    TimeOfDay selectedTime = TimeOfDay(
+      hour: s.scheduledAt.hour,
+      minute: s.scheduledAt.minute,
+    );
+    final noteController = TextEditingController(text: s.notes);
+
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final dateStr =
+              '${selectedDate.day.toString().padLeft(2, '0')}/${selectedDate.month.toString().padLeft(2, '0')}/${selectedDate.year}';
+          final timeStr =
+              '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
+
+          return AlertDialog(
+            title: Text('Edit Jadwal Sesi ${s.sessionNumber}'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Ubah tanggal dan jam pelaksanaan sesi. Kuota sesi dan relasi klien/paket tetap terjaga.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 14),
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.calendar_today, color: kMboisTeal),
+                    title: const Text('Tanggal Sesi'),
+                    subtitle: Text(dateStr, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    trailing: const Icon(Icons.edit, size: 18),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedDate,
+                        firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                        lastDate: DateTime.now().add(const Duration(days: 90)),
+                      );
+                      if (picked != null) {
+                        setDialogState(() => selectedDate = picked);
+                      }
+                    },
+                  ),
+                  const Divider(),
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.access_time, color: kMboisTeal),
+                    title: const Text('Jam Mulai Sesi'),
+                    subtitle: Text(timeStr, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    trailing: const Icon(Icons.edit, size: 18),
+                    onTap: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: selectedTime,
+                      );
+                      if (picked != null) {
+                        setDialogState(() => selectedTime = picked);
+                      }
+                    },
+                  ),
+                  const Divider(),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: noteController,
+                    decoration: const InputDecoration(
+                      labelText: 'Catatan Jadwal (Opsional)',
+                      hintText: 'Contoh: Reschedule atas permintaan klien',
+                      isDense: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Batal'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kMboisTeal,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () async {
+                  final newDt = DateTime(
+                    selectedDate.year,
+                    selectedDate.month,
+                    selectedDate.day,
+                    selectedTime.hour,
+                    selectedTime.minute,
+                  );
+                  final db = ref.read(gymRepositoryProvider);
+                  final ok = await db.rescheduleSession(
+                    s.id,
+                    newDt,
+                    notes: noteController.text.trim(),
+                  );
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  if (ok) {
+                    onRefresh?.call();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Jadwal Sesi ${s.sessionNumber} berhasil diperbarui.',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: const Text('Simpan Perubahan'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showSessionHistoryDetail(BuildContext context, Session s) async {
+    final db = ref.read(gymRepositoryProvider);
+    final details = await db.getSessionDetails(s.id);
+    if (!context.mounted) return;
+
+    List<List<Offset>> parseStrokes(dynamic raw) {
+      if (raw == null || raw is! List) return [];
+      final List<List<Offset>> result = [];
+      for (final strokeItem in raw) {
+        if (strokeItem is List) {
+          final List<Offset> stroke = [];
+          for (final pt in strokeItem) {
+            if (pt is Map && pt.containsKey('x') && pt.containsKey('y')) {
+              stroke.add(Offset(
+                (pt['x'] as num).toDouble(),
+                (pt['y'] as num).toDouble(),
+              ));
+            } else if (pt is Offset) {
+              stroke.add(pt);
+            }
+          }
+          if (stroke.isNotEmpty) result.add(stroke);
+        }
+      }
+      return result;
+    }
+
+    final clientStrokes = parseStrokes(details?['clientSignatureStrokes']);
+    final coachStrokes = parseStrokes(details?['coachSignatureStrokes']);
+    final notes = (details?['notes'] as String?) ?? s.notes;
+    final clientName = (details?['clientName'] as String?) ?? client.name;
+    final trainerName = (details?['trainerName'] as String?) ?? 'Coach Personal Trainer';
+    DateTime? completedAt;
+    final rawCompleted = details?['completedAt'];
+    if (rawCompleted is DateTime) {
+      completedAt = rawCompleted;
+    } else if (rawCompleted != null) {
+      try {
+        completedAt = (rawCompleted as dynamic).toDate() as DateTime?;
+      } catch (_) {}
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.verified, color: kMboisTeal),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Riwayat Sesi ${s.sessionNumber}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: kMboisMint.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: kMboisTeal.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Klien: $clientName', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text('Pelatih / PT: $trainerName'),
+                      Text('Jadwal: ${s.scheduledAt.day}/${s.scheduledAt.month}/${s.scheduledAt.year} ${s.scheduledAt.hour.toString().padLeft(2, '0')}:${s.scheduledAt.minute.toString().padLeft(2, '0')}'),
+                      if (completedAt != null)
+                        Text('Selesai pada: ${completedAt.day}/${completedAt.month}/${completedAt.year} ${completedAt.hour.toString().padLeft(2, '0')}:${completedAt.minute.toString().padLeft(2, '0')}'),
+                      const Text('Status: HADIR (Sesi Diverifikasi)', style: TextStyle(color: kMboisTeal, fontWeight: FontWeight.bold)),
+                      if (notes.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text('Catatan: $notes', style: const TextStyle(fontStyle: FontStyle.italic)),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Bukti Tanda Tangan Digital Asli (Read-Only):',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                SignaturePreviewCard(
+                  strokes: clientStrokes,
+                  signerLabel: 'Tanda Tangan Klien ($clientName)',
+                  height: 110,
+                  timestamp: completedAt,
+                ),
+                const SizedBox(height: 10),
+                SignaturePreviewCard(
+                  strokes: coachStrokes,
+                  signerLabel: 'Tanda Tangan Coach ($trainerName)',
+                  height: 110,
+                  timestamp: completedAt,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: kMboisTeal, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tutup'),
+          ),
+        ],
       ),
     );
   }
@@ -4734,20 +5068,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void _showEditCloudProfileDialog(BuildContext context, CloudProfile profile) {
     final nameController = TextEditingController(text: profile.name);
     final phoneController = TextEditingController(text: profile.phone);
-    final professional = <String, TextEditingController>{
-      'heightCm': TextEditingController(text: profile.heightCm?.toString() ?? ''),
-      'weightKg': TextEditingController(text: profile.weightKg?.toString() ?? ''),
-      'specialization': TextEditingController(text: profile.specialization),
-      'experienceYears': TextEditingController(text: profile.experienceYears?.toString() ?? ''),
-      'certifications': TextEditingController(text: profile.certifications),
-      'bio': TextEditingController(text: profile.bio),
-      'photoUrl': TextEditingController(text: profile.photoUrl ?? ''),
-    };
-    const labels = {
-      'heightCm': 'Tinggi Badan (cm)', 'weightKg': 'Berat Badan (kg)',
-      'specialization': 'Spesialisasi', 'experienceYears': 'Pengalaman (tahun)',
-      'certifications': 'Sertifikasi', 'bio': 'Bio', 'photoUrl': 'URL Foto (opsional)',
-    };
+    final heightController = TextEditingController(
+      text: profile.heightCm != null ? profile.heightCm.toString() : '',
+    );
+    final weightController = TextEditingController(
+      text: profile.weightKg != null ? profile.weightKg.toString() : '',
+    );
+    final specController =
+        TextEditingController(text: profile.specialization);
+    final expController = TextEditingController(
+      text: profile.experienceYears != null
+          ? profile.experienceYears.toString()
+          : '',
+    );
+    final certController =
+        TextEditingController(text: profile.certifications);
+    final bioController = TextEditingController(text: profile.bio);
+    final photoUrlController =
+        TextEditingController(text: profile.photoUrl ?? '');
+
     final formKey = GlobalKey<FormState>();
     bool saving = false;
     String? errorText;
@@ -4756,98 +5095,246 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Edit Profil Coach (Cloud)'),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (errorText != null) ...[
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.edit_note, color: kMboisTeal),
+              SizedBox(width: 8),
+              Text(
+                'Edit Profil Coach PT',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Cloud Storage Warning Notice
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade50,
+                        color: Colors.amber.shade50,
                         borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.shade300),
                       ),
-                      child: Text(
-                        errorText!,
-                        style: TextStyle(
-                          color: Colors.red.shade800,
-                          fontSize: 12,
-                        ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.cloud_off,
+                              color: Colors.amber.shade900, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Firebase Storage belum aktif di Firebase produksi. Gunakan URL HTTPS gambar untuk foto profil (Cloud Storage: BLOCKED).',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.amber.shade900,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 12),
-                  ],
-                  TextFormField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nama Lengkap PT *',
-                      prefixIcon: Icon(
-                        Icons.person,
-                        color: AppColors.vibrantBlue,
+                    if (errorText != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          errorText!,
+                          style: TextStyle(
+                            color: Colors.red.shade800,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
-                    ),
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) {
-                        return 'Nama lengkap tidak boleh kosong';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    initialValue: profile.email,
-                    readOnly: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Email PT (Firebase Auth)',
-                      prefixIcon: Icon(Icons.email, color: Colors.grey),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: phoneController,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      labelText: 'Nomor WhatsApp *',
-                      hintText: 'Contoh: 08123456789 atau +628****6789',
-                      prefixIcon: Icon(
-                        Icons.phone,
-                        color: AppColors.vibrantBlue,
-                      ),
-                    ),
-                    validator: (v) {
-                      if (v != null &&
-                          v.trim().isNotEmpty &&
-                          !isValidPhoneNumber(v)) {
-                        return 'Format nomor WhatsApp tidak valid (8-18 digit)';
-                      }
-                      return null;
-                    },
-                  ),
-                  Text('Peran Administratif: ${profile.role} (hanya admin)'),
-                  Text('Status Akun: ${profile.status} (hanya admin)'),
-                  for (final entry in professional.entries)
+                      const SizedBox(height: 12),
+                    ],
                     TextFormField(
-                      controller: entry.value,
-                      decoration: InputDecoration(labelText: labels[entry.key]),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) return null;
-                        if (entry.key == 'heightCm' || entry.key == 'weightKg') {
-                          final n = double.tryParse(value);
-                          if (n == null || !n.isFinite || n <= 0) return 'Masukkan angka positif';
-                        }
-                        if (entry.key == 'experienceYears') {
-                          final n = int.tryParse(value);
-                          if (n == null || n < 0) return 'Masukkan tahun valid';
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nama Lengkap PT *',
+                        prefixIcon: Icon(
+                          Icons.person_outline,
+                          color: AppColors.vibrantBlue,
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Nama lengkap tidak boleh kosong';
                         }
                         return null;
                       },
                     ),
-                ],
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      initialValue: profile.email,
+                      readOnly: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Email Akun (Read-Only)',
+                        prefixIcon: Icon(Icons.email_outlined, color: Colors.grey),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Nomor WhatsApp *',
+                        hintText: 'Contoh: 08123456789 atau +628123456789',
+                        prefixIcon: Icon(
+                          Icons.phone_outlined,
+                          color: AppColors.vibrantBlue,
+                        ),
+                      ),
+                      validator: (v) {
+                        if (v != null &&
+                            v.trim().isNotEmpty &&
+                            !isValidPhoneNumber(v)) {
+                          return 'Format nomor WhatsApp tidak valid (8-18 digit)';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    Text('Peran Administratif: ${profile.role} (hanya admin)'),
+                    Text('Status Akun: ${profile.status} (hanya admin)'),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: heightController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Tinggi Badan (cm)',
+                              prefixIcon: Icon(Icons.height, color: kMboisTeal),
+                            ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return null;
+                              final n = double.tryParse(v);
+                              if (n == null || n <= 0 || n > 260) {
+                                return 'Angka 30-260 cm';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextFormField(
+                            controller: weightController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Berat Badan (kg)',
+                              prefixIcon:
+                                  Icon(Icons.fitness_center, color: kMboisTeal),
+                            ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return null;
+                              final n = double.tryParse(v);
+                              if (n == null || n <= 0 || n > 300) {
+                                return 'Angka 20-300 kg';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: specController,
+                      decoration: const InputDecoration(
+                        labelText: 'Spesialisasi',
+                        hintText: 'Contoh: Hypertrophy, Bodybuilding, Fat Loss',
+                        prefixIcon:
+                            Icon(Icons.stars_outlined, color: kMboisTeal),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: expController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Pengalaman',
+                              suffixText: 'tahun',
+                              prefixIcon:
+                                  Icon(Icons.work_outline, color: kMboisTeal),
+                            ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return null;
+                              final n = int.tryParse(v);
+                              if (n == null || n < 0 || n > 60) {
+                                return '0-60 thn';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextFormField(
+                            controller: certController,
+                            decoration: const InputDecoration(
+                              labelText: 'Sertifikasi',
+                              hintText: 'APKI / CSCS / NASM',
+                              prefixIcon: Icon(Icons.verified_outlined,
+                                  color: kMboisTeal),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: bioController,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Bio / Deskripsi Singkat',
+                        hintText: 'Deskripsi singkat profil kepelatihan Anda',
+                        prefixIcon:
+                            Icon(Icons.notes_outlined, color: kMboisTeal),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: photoUrlController,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: 'URL Foto Profil (HTTPS)',
+                        hintText: 'https://images.unsplash.com/...',
+                        prefixIcon: Icon(Icons.photo_camera_outlined,
+                            color: kMboisTeal),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return null;
+                        if (!v.trim().startsWith('http://') &&
+                            !v.trim().startsWith('https://')) {
+                          return 'Gunakan URL HTTPS yang valid';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -4858,7 +5345,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.vibrantBlue,
+                backgroundColor: kMboisTeal,
                 foregroundColor: Colors.white,
               ),
               onPressed: saving
@@ -4875,13 +5362,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             .updateProfile(
                               displayName: nameController.text.trim(),
                               phone: phoneController.text.trim(),
-                              heightCm: double.tryParse(professional['heightCm']!.text),
-                              weightKg: double.tryParse(professional['weightKg']!.text),
-                              experienceYears: int.tryParse(professional['experienceYears']!.text),
-                              specialization: professional['specialization']!.text.trim(),
-                              certifications: professional['certifications']!.text.trim(),
-                              bio: professional['bio']!.text.trim(),
-                              photoUrl: professional['photoUrl']!.text.trim(),
+                              heightCm:
+                                  double.tryParse(heightController.text.trim()),
+                              weightKg:
+                                  double.tryParse(weightController.text.trim()),
+                              experienceYears:
+                                  int.tryParse(expController.text.trim()),
+                              specialization: specController.text.trim(),
+                              certifications: certController.text.trim(),
+                              bio: bioController.text.trim(),
+                              photoUrl: photoUrlController.text.trim(),
                             );
                         if (err != null) {
                           setDialogState(() {
@@ -4894,7 +5384,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           Navigator.pop(ctx);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Profil Cloud berhasil diperbarui'),
+                              content:
+                                  Text('Profil Coach PT berhasil diperbarui.'),
                             ),
                           );
                         }
@@ -4960,25 +5451,65 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               child: Column(
                 children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      border: Border.all(color: Colors.white, width: 2.5),
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        AppAssets.coachAvatar,
-                        fit: BoxFit.cover,
-                        errorBuilder: (ctx, err, stack) => const Icon(
-                          Icons.person,
-                          color: AppColors.vibrantBlue,
-                          size: 40,
+                  Stack(
+                    alignment: Alignment.bottomRight,
+                    children: [
+                      Container(
+                        width: 84,
+                        height: 84,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                          border: Border.all(color: Colors.white, width: 2.5),
+                        ),
+                        child: ClipOval(
+                          child: (cloudUser.photoUrl != null &&
+                                  cloudUser.photoUrl!.trim().isNotEmpty &&
+                                  (cloudUser.photoUrl!.startsWith('http://') ||
+                                      cloudUser.photoUrl!.startsWith('https://')))
+                              ? Image.network(
+                                  cloudUser.photoUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (ctx, err, stack) =>
+                                      Image.asset(
+                                    AppAssets.coachAvatar,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (ctx2, err2, stack2) =>
+                                        const Icon(
+                                      Icons.person,
+                                      color: AppColors.vibrantBlue,
+                                      size: 40,
+                                    ),
+                                  ),
+                                )
+                              : Image.asset(
+                                  AppAssets.coachAvatar,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (ctx, err, stack) => const Icon(
+                                    Icons.person,
+                                    color: AppColors.vibrantBlue,
+                                    size: 40,
+                                  ),
+                                ),
                         ),
                       ),
-                    ),
+                      GestureDetector(
+                        onTap: () =>
+                            _showEditCloudProfileDialog(context, cloudUser),
+                        child: Container(
+                          padding: const EdgeInsets.all(5),
+                          decoration: const BoxDecoration(
+                            color: kMboisTeal,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -5100,18 +5631,157 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          Text('Tinggi: ${cloudUser.heightCm ?? "—"} cm'),
-                          Text('Berat: ${cloudUser.weightKg ?? "—"} kg'),
-                          Text('Spesialisasi: ${cloudUser.specialization}'),
-                          Text('Pengalaman: ${cloudUser.experienceYears ?? "—"} tahun'),
-                          Text('Sertifikasi: ${cloudUser.certifications}'),
-                          Text('Bio: ${cloudUser.bio}'),
-                          AppPillButton(
-                            text: 'EDIT PROFIL',
-                            backgroundColor: AppColors.cyanAccent,
-                            onPressed: () =>
-                                _showEditCloudProfileDialog(context, cloudUser),
+                          const Divider(height: 24),
+                          const Text(
+                            'Data Profesional PT',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.height,
+                              color: AppColors.vibrantBlue,
+                            ),
+                            title: const Text(
+                              'Tinggi Badan',
+                              style: TextStyle(fontSize: 12, color: kMboisMuted),
+                            ),
+                            subtitle: Text(
+                              cloudUser.heightCm != null
+                                  ? '${cloudUser.heightCm!.toStringAsFixed(1)} cm'
+                                  : 'Belum diatur',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.fitness_center,
+                              color: AppColors.vibrantBlue,
+                            ),
+                            title: const Text(
+                              'Berat Badan',
+                              style: TextStyle(fontSize: 12, color: kMboisMuted),
+                            ),
+                            subtitle: Text(
+                              cloudUser.weightKg != null
+                                  ? '${cloudUser.weightKg!.toStringAsFixed(1)} kg'
+                                  : 'Belum diatur',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.stars_outlined,
+                              color: AppColors.vibrantBlue,
+                            ),
+                            title: const Text(
+                              'Keahlian / Spesialisasi',
+                              style: TextStyle(fontSize: 12, color: kMboisMuted),
+                            ),
+                            subtitle: Text(
+                              cloudUser.specialization.isNotEmpty
+                                  ? cloudUser.specialization
+                                  : 'Belum diatur',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.work_outline,
+                              color: AppColors.vibrantBlue,
+                            ),
+                            title: const Text(
+                              'Pengalaman',
+                              style: TextStyle(fontSize: 12, color: kMboisMuted),
+                            ),
+                            subtitle: Text(
+                              cloudUser.experienceYears != null
+                                  ? '${cloudUser.experienceYears} tahun'
+                                  : 'Belum diatur',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.verified_outlined,
+                              color: AppColors.vibrantBlue,
+                            ),
+                            title: const Text(
+                              'Sertifikasi',
+                              style: TextStyle(fontSize: 12, color: kMboisMuted),
+                            ),
+                            subtitle: Text(
+                              cloudUser.certifications.isNotEmpty
+                                  ? cloudUser.certifications
+                                  : 'Belum diatur',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          ListTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.notes_outlined,
+                              color: AppColors.vibrantBlue,
+                            ),
+                            title: const Text(
+                              'Bio',
+                              style: TextStyle(fontSize: 12, color: kMboisMuted),
+                            ),
+                            subtitle: Text(
+                              cloudUser.bio.isNotEmpty
+                                  ? cloudUser.bio
+                                  : 'Belum diatur',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Center(
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: kMboisTeal,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 28,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                              ),
+                              icon: const Icon(Icons.edit, size: 16),
+                              label: const Text(
+                                'EDIT PROFIL',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              onPressed: () =>
+                                  _showEditCloudProfileDialog(context, cloudUser),
+                            ),
                           ),
                         ],
                       ),

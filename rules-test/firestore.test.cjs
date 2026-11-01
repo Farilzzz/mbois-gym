@@ -87,7 +87,17 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
     await assertFails(getDocs(collection(dbFor('pt1'), 'users')));
   });
   it('self displayName and phone edits allowed without changing authorization', async () => {
-    await assertSucceeds(updateDoc(doc(dbFor('pt1'), 'users/pt1'), { displayName: 'Edited', phone: '08123' }));
+    await assertSucceeds(updateDoc(doc(dbFor('pt1'), 'users/pt1'), {
+      displayName: 'Edited',
+      phone: '08123',
+      heightCm: 175,
+      weightKg: 70,
+      specialization: 'Hypertrophy',
+      experienceYears: 5,
+      certifications: 'APKI Certified',
+      bio: 'Coach fitness',
+      photoUrl: 'https://example.com/avatar.jpg',
+    }));
   });
   for (const [uid, data] of [['pt1', { role: 'admin' }], ['pending', { status: 'active' }], ['inactive', { status: 'active' }], ['pt1', { assignedTrainerIds: ['pt1'] }]]) {
     it(`${uid} cannot escalate with ${Object.keys(data)[0]}`, async () => {
@@ -113,9 +123,10 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
     await assertFails(updateDoc(doc(dbFor('pt2'), 'clients/c1'), { name: 'Intruder Update' }));
     await assertFails(deleteDoc(doc(dbFor('pt2'), 'clients/c1')));
   });
-  it('assigned trainer can schedule and cancel a session but cannot complete it', async () => {
+  it('assigned trainer can schedule, reschedule, and cancel a session but cannot complete it without trusted authority', async () => {
     const path = 'clients/c1/sessions/new_item';
     await assertSucceeds(setDoc(doc(dbFor('pt1'), path), { packageIntId: 1, sessionNumber: 1, scheduledTime: new Date(), status: 'scheduled' }));
+    await assertSucceeds(updateDoc(doc(dbFor('pt1'), path), { scheduledTime: new Date(Date.now() + 86400000), notes: 'Rescheduled session' }));
     await assertSucceeds(updateDoc(doc(dbFor('pt1'), path), { status: 'cancelled' }));
     await assertFails(updateDoc(doc(dbFor('pt1'), path), { status: 'completed' }));
     await assertFails(setDoc(doc(dbFor('pt2'), 'clients/c1/sessions/intruder'), { packageIntId: 1, sessionNumber: 1, scheduledTime: new Date(), status: 'scheduled' }));
