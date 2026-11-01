@@ -1,8 +1,10 @@
 # Mbois Gym PT Management
 
-Sistem manajemen Personal Trainer (PT) resmi untuk operasional Mbois Gym. Proyek ini mendigitalisasi pengelolaan klien, program latihan, asesmen fisik awal, pencatatan jadwal dan absensi sesi, pemotongan kuota dengan tanda tangan digital adaptif, evaluasi Post PT, katalog 4 paket resmi individu, serta dashboard manajer untuk memantau target penjualan triwulan.
+Sistem Manajemen Personal Trainer (PT) resmi untuk operasional **Mbois Gym** (Tahun Pengembangan: **2026**). Proyek ini mendigitalisasi pengelolaan klien, program latihan, asesmen fisik awal, pencatatan jadwal dan absensi sesi, pemotongan kuota dengan tanda tangan digital ganda touchscreen, evaluasi Post PT, katalog 4 paket resmi individu, isolasi privasi absensi klien, serta dashboard manajer untuk memantau target penjualan triwulan Rp 5.000.000 per Personal Trainer.
 
-Aplikasi client dibangun menggunakan Flutter dengan Firebase Authentication dan Cloud Firestore sebagai backend operasional utama yang terpusat dan konsisten antarperangkat.
+Aplikasi client dibangun menggunakan **Flutter** dengan **Firebase Authentication** dan **Cloud Firestore** sebagai backend operasional utama yang terpusat, real-time, dan konsisten antarperangkat.
+
+Repository Utama: [https://github.com/YakzIsGood/mbois-gym](https://github.com/YakzIsGood/mbois-gym)
 
 ---
 
@@ -24,23 +26,46 @@ Aplikasi client dibangun menggunakan Flutter dengan Firebase Authentication dan 
 Aplikasi menerapkan dua peran operasional utama berbasis dokumen `users/{uid}` di Cloud Firestore:
 
 ### A. TRAINER (Personal Trainer)
-- Melihat dan memperbarui data profil profesional pribadi (nama, telepon, tinggi badan, berat badan, spesialisasi, pengalaman, sertifikasi, bio).
-- Mengelola data klien yang ditugaskan kepadanya (`assignedTrainerIds`).
-- Mengelola jadwal latihan, absensi, program latihan (Workout Log), serta evaluasi Post PT.
-- Melakukan pemotongan kuota sesi dengan verifikasi tanda tangan ganda (Klien dan Coach).
-- Membatalkan jadwal sesi tanpa merusak kuota paket.
-- Mendaftarkan klien baru atau memperpanjang paket berdasarkan 4 pilihan paket resmi PT.
+Trainer hanya mengelola data sesuai penugasan dirinya (`assignedTrainerIds`).
+**Alur Kerja Trainer**:
+1. **Login**: Masuk menggunakan email dan password Trainer terverifikasi.
+2. **Klien Aktif**: Memantau daftar klien aktif pada Home. Klien yang dibatalkan atau telah menyelesaikan seluruh paket otomatis dipindahkan dari daftar aktif ke daftar selesai.
+3. **Pendaftaran Paket**: Mendaftarkan klien baru atau perpanjangan paket dengan memilih salah satu dari 4 paket resmi PT.
+4. **Jadwal Sesi**:
+   - Menambahkan jadwal sesi appointment sesuai kuota yang tersedia.
+   - Mengedit tanggal dan jam sesi terencana (*planned*) tanpa perlu menghapus dan membuat ulang.
+   - Membatalkan sesi dengan alasan valid; pembatalan langsung mengembalikan slot penjadwalan tanpa memotong kuota paket.
+5. **Absensi & Potong Sesi**:
+   - Membuka modal tanda tangan digital fullscreen touchscreen.
+   - Mengumpulkan goresan tanda tangan asli dari Klien dan Coach secara terpisah (mendukung multi-stroke tanpa pergeseran gesture).
+   - Memvalidasi pemotongan kuota sesi (hanya berkurang tepat satu kali).
+6. **Riwayat Sesi**:
+   - Melihat riwayat sesi selesai pada tab "Hadir".
+   - Membuka dialog detail riwayat untuk meninjau tanggal pelaksanaan, nama PT, nama klien, catatan sesi, dan kedua tanda tangan digital asli.
+7. **Profil PT**:
+   - Meninjau dan memperbarui spesialisasi, pengalaman, sertifikasi, tinggi badan (TB), berat badan (BB), dan bio pelatih.
 
 ### B. MANAGER (Manajer Operasional)
-- Mengakses **Dashboard Manajemen Khusus** (`/manager-dashboard` atau `/dashboard` otomatis).
-- Memantau metrik bisnis triwulan (Q1–Q4) dengan target awal **Rp 5.000.000** per triwulan:
-  - Total PT aktif & total klien terdaftar.
-  - Jumlah paket PT terjual & total nominal omzet paket.
-  - Persentase pencapaian target triwulan dan sisa nominal menuju target.
-  - Grafik batang fl_chart per bulan dalam triwulan terpilih.
-  - Tabel perbandingan performa penjualan dan klien per Personal Trainer.
-- Melihat daftar seluruh Personal Trainer Mbois Gym beserta profil profesionalnya.
-- Mengelola penugasan klien antar-PT.
+Manajer memiliki hak pantau operasional dan evaluasi performa seluruh Personal Trainer di gym.
+**Alur Kerja Manajer**:
+1. **Login**: Masuk menggunakan akun Manager terverifikasi. Aplikasi otomatis mengarahkan ke **Dashboard Manajemen PT**.
+2. **Dashboard KPI & Target Triwulan**:
+   - Memilih filter Tahun dan Triwulan (Q1, Q2, Q3, Q4).
+   - Memantau 4 kartu ringkasan: Total PT Aktif, Klien Aktif, Paket Terjual, dan Nilai Paket Terjual Tercatat.
+   - Memeriksa grafik perbandingan capaian penjualan terhadap target **Rp 5.000.000** per PT.
+3. **Daftar Kinerja Seluruh PT**:
+   - Memeriksa nama, foto/avatar, spesialisasi, status aktif/nonaktif, jumlah klien aktif, nilai paket terjual, progress bar, dan label status pencapaian target ("Target Tercapai ✓" vs "Belum Tercapai").
+4. **Pilih PT & Daftar Klien**:
+   - Menekan tombol **Detail PT & Klien** untuk melihat rincian penjualan bulanan dalam triwulan dan daftar seluruh klien yang ditangani oleh PT tersebut.
+5. **Detail Absensi Klien (Read-Only)**:
+   - Menekan salah satu nama klien untuk membuka dialog rekam kehadiran.
+   - **Prinsip Perlindungan Privasi Klien**: Manajer hanya disajikan data operasional absensi:
+     * Nama klien.
+     * Paket yang diikuti.
+     * Tanggal dan jam sesi.
+     * Status kehadiran (Hadir, Dijadwalkan, Dibatalkan).
+     * Jumlah sesi yang dihadiri dan jumlah sesi yang belum dijalani.
+     * *Catatan privasi: Asesmen kesehatan medis, catatan rahasia latihan, program beban, dan tanda tangan klien tidak ditampilkan kepada manajer.*
 
 > **PENTING — Keamanan Pemberian Peran**:
 > Pendaftaran mandiri publik (self-signup) sebagai Manager maupun Trainer aktif **ditiadakan secara ketat**. Seluruh akun PT dan Manajer harus diprovisikan oleh pihak berwenang melalui Firebase Console atau proses administratif tepercaya. Field `role`, `status`, dan `assignedTrainerIds` dilindungi oleh Firestore Security Rules dan tidak dapat diubah oleh trainer sendiri.
@@ -116,59 +141,68 @@ package_sales/{saleId}                -> Catatan snapshot transaksi penjualan pa
 
 ---
 
-## 4. Pricelist Resmi Paket Personal Trainer
+## 4. Pricelist Resmi Paket PT & Target Triwulan
 
-Berdasarkan tarif resmi Mbois Gym, aplikasi menyediakan 4 pilihan paket PT individu baku:
+### A. Tarif Paket Personal Trainer Individu
+Berdasarkan ketentuan operasional Mbois Gym, aplikasi menyediakan 4 pilihan paket PT individu baku:
 
 | Paket | Sesi | Durasi | Harga Resmi |
 |---|---|---|---|
-| **Paket 4 Sesi** | 4 sesi | 4 minggu | Rp 500.000 |
-| **Paket 10 Sesi** | 10 sesi | 4 minggu | Rp 1.000.000 |
-| **Paket 16 Sesi** | 16 sesi | 8 minggu | Rp 1.600.000 |
-| **Paket 24 Sesi** | 24 sesi | 8 minggu | Rp 2.000.000 |
+| **Paket 4 Sesi** | 4 sesi | 4 minggu | **Rp 500.000** |
+| **Paket 10 Sesi** | 10 sesi | 4 minggu | **Rp 1.000.000** |
+| **Paket 16 Sesi** | 16 sesi | 8 minggu | **Rp 1.600.000** |
+| **Paket 24 Sesi** | 24 sesi | 8 minggu | **Rp 2.000.000** |
 
-- Setiap pendaftaran klien baru atau perpanjangan paket PT menyimpan snapshot harga dan data paket ke `package_sales`, sehingga perubahan harga di masa mendatang tidak mengubah riwayat finansial terdahulu.
-- Kuota sesi dihitung secara atomik dan tidak dapat bernilai negatif.
+Setiap pendaftaran klien baru atau perpanjangan paket PT mencatat snapshot harga ke koleksi `package_sales` yang terikat pada `trainerId`. Perhitungan slot penjadwalan mengikuti formula:
+$$\text{Slot Penjadwalan Tersedia} = \text{Total Sesi Paket} - \text{Sesi Selesai} - \text{Jadwal Aktif}$$
+
+### B. Target Penjualan Rp 5.000.000 per PT per Triwulan
+Target penjualan paket sebesar **Rp 5.000.000** berlaku secara **individual untuk setiap Personal Trainer** selama satu triwulan kalender (bukan target kolektif seluruh gym):
+- **Q1**: Januari – Maret
+- **Q2**: April – Juni
+- **Q3**: Juli – September
+- **Q4**: Oktober – Desember
+
+Dashboard menyajikan grafik batang fl_chart bulanan, persentase pencapaian masing-masing PT, sisa nominal target, dan indikator pemenuhan target yang dihitung dari transaksi paket Firestore yang valid.
 
 ---
 
 ## 5. Fitur Operasional Utama
 
-### A. CRUD Absensi & Pembatalan Sesi
-- **CREATE**: Menjadwalkan appointment sesi latihan berdasarkan kalender dan waktu.
+### A. CRUD Absensi & Manajemen Jadwal Sesi
+- **CREATE**: Menjadwalkan appointment sesi latihan berdasarkan kalender dan waktu sesuai kuota yang tersedia.
+- **EDIT / RESCHEDULE**: Jadwal terencana (*planned*) dapat diedit tanggal dan jam pertemuannya langsung tanpa perlu menghapus dan membuat ulang jadwal.
 - **READ**: Filter status sesi yang interaktif:
   - `Aktif / Dijadwalkan` (default): Menampilkan sesi mendatang yang siap dijalankan.
-  - `Hadir`: Menampilkan riwayat sesi yang telah selesai diverifikasi.
+  - `Hadir`: Menampilkan riwayat sesi yang telah selesai diverifikasi beserta detail kedua tanda tangan.
   - `Dibatalkan`: Menampilkan sesi yang dibatalkan beserta alasannya.
   - `Semua`: Menampilkan seluruh catatan sesi.
-- **UPDATE / CANCEL**:
-  - Tombol **Batalkan Sesi** memunculkan dialog konfirmasi dan input alasan pembatalan. Sesi yang dibatalkan **langsung menghilang dari daftar sesi aktif**, tersimpan permanen di cloud dengan status `cancelled`, dan **kuota paket klien tidak terpotong**.
-- **DELETE / RESTORE**: Audit trail tersimpan pada dokumen sesi tanpa penghapusan diam-diam.
+- **CANCEL**:
+  - Tombol **Batalkan Sesi** memunculkan dialog konfirmasi dan input alasan pembatalan. Sesi yang dibatalkan **langsung menghilang dari daftar sesi aktif**, tersimpan permanen di cloud dengan status `cancelled`, **kuota paket klien tidak terpotong**, dan tombol Tambah Jadwal kembali tersedia untuk membuat sesi pengganti.
 
 ### B. Pop-Up Tanda Tangan Khusus Touchscreen
-Menjawab kendala gesture dragging pada layar HP fisik:
-- **Dedicated Fullscreen Dialog**: Membuka kanvas tanda tangan modal dengan ukuran besar yang terkunci (`PopScope(canPop: false)`), mencegah konflik scrolling halaman latar.
+- **Dedicated Fullscreen Dialog**: Membuka kanvas tanda tangan modal dengan ukuran besar yang terkunci (`PopScope(canPop: false)`), mencegah konflik gesture scrolling halaman latar.
 - **RawGestureDetector Independen**: Gesture menggambar menang di arena gesture Flutter, mendukung multi-stroke tanpa terhapus saat jari diangkat.
 - **Verifikasi Ganda**: Memeriksa tanda tangan terpisah untuk **Klien** dan **Coach / PT**.
 - **Signature Preview Card**: Menampilkan kartu pratinjau tanda tangan, status terverifikasi, dan opsi ubah tanda tangan sebelum konfirmasi akhir.
 - **Proteksi Idempotensi**: Mencegah double-tap tombol "Verifikasi & Potong Sesi" dan memproses transaksi atomik Firestore.
 
-### C. Dashboard Manajer & Target Triwulan Rp 5 Juta
-- Menggunakan `fl_chart` untuk menampilkan grafik batang real-time penjualan 3 bulan dalam satu triwulan.
-- Menghitung persentase pencapaian omzet valid terhadap target Rp 5.000.000.
-- Menampilkan perbandingan performa masing-masing PT (klien ditangani, paket terjual, dan total nominal tercatat).
-- Filter pemilihan kuartal (Q1 Jan-Mar, Q2 Apr-Jun, Q3 Jul-Sep, Q4 Oct-Dec) dan tahun.
+### C. Dashboard Manajer & Isolasi Privasi Klien
+- **Grafik Batang Capaian PT**: Visualisasi pencapaian per PT terhadap target Rp 5.000.000 dengan indikator visual "Target Tercapai ✓" atau "Belum Tercapai".
+- **Filter Tahun & Triwulan**: Analisis data historis dan berjalan untuk Q1 hingga Q4.
+- **Detail PT & Klien**: Menampilkan profil pelatih, rincian omzet bulanan, dan daftar klien yang dibimbing.
+- **Detail Absensi Read-Only**: Tinjauan rekam kehadiran sesi klien (nomor sesi, jadwal, status kehadiran, sesi dihadiri vs sisa sesi) dengan proteksi data rahasia (asesmen fisik, riwayat medis, workout log, dan tanda tangan tidak dibocorkan ke manajer).
 
 ---
 
 ## 6. Firestore Security Rules
 
-Keamanan database diatur dalam `firestore.rules` dan diuji secara deterministik dengan Firebase Emulator Suite (57 pengujian):
+Keamanan database diatur dalam `firestore.rules` dan diuji secara deterministik dengan Firebase Emulator Suite (58 pengujian):
 1. Pengguna tak terotentikasi dan akun berstatus `pending`/`inactive` diblokir total dari seluruh data operasional.
 2. Trainer hanya dapat membaca dan menulis data klien yang terdaftar di `assignedTrainerIds`.
 3. Trainer dilarang memanipulasi `role`, `status`, atau `assignedTrainerIds` sendiri.
 4. Trainer dilarang mengubah status sesi menjadi `completed` atau menaikkan `completedCount` kuota secara langsung dari client tanpa melalui transaksi backend yang sah.
-5. Manajer memiliki hak baca seluruh profil PT, data klien, subkoleksi operasional, dan katalog penjualan untuk keperluan pelaporan dashboard.
+5. Manajer memiliki hak baca profil PT dan data operasional yang diizinkan untuk pelaporan dashboard manajerial.
 6. Subkoleksi root tak berpemilik dan koleksi warisan diblokir (`fail closed`).
 
 ---
@@ -179,64 +213,71 @@ Validasi dijalankan secara menyeluruh di lingkungan pengujian:
 
 | Pengujian | Perintah | Hasil Aktual |
 |---|---|---|
-| **Firestore Security Rules** | `npm run test:rules` | **57 tests passed** (0 failed) |
+| **Firestore Security Rules** | `npm run test:rules` | **58 tests passed** (0 failed) |
 | **Flutter Analyze** | `flutter analyze --no-fatal-infos` | **0 errors, 0 warnings** (Clean) |
-| **Flutter Test Suite** | `flutter test --no-pub --platform=tester` | **115 tests passed** (0 failed) |
-| **Android APK Debug Build** | `flutter build apk --debug --no-pub` | **SUCCESS** (`app-debug.apk`) |
+| **Flutter Test Suite** | `flutter test` | **129 tests passed** (0 failed) |
+| **Android APK Debug Build** | `flutter build apk --debug` | **BUILD SUCCESSFUL** (`app-debug.apk`) |
+| **Smoke Test Emulator Android** | `adb install` + screencap manual | **Terverifikasi Bebas Bug** |
 
-### Rincian Test Suite Flutter (115 tests):
-- `test/auth_test.dart` (11 tests): Otentikasi dan hashing.
-- `test/cloud_auth_cutover_test.dart` (17 tests): Firebase Auth, reset password, dan pemblokiran akun inaktif.
+### Rincian Test Suite Flutter (129 tests):
+- `test/regression_lifecycle_quota_signatures_test.dart` (20 tests): Lifecycle klien, filter klien batal di Home, pemulihan kuota pembatalan sesi, rescheduling jadwal, dan riwayat tanda tangan.
+- `test/manager_dashboard_test.dart` & `test/manager_quarterly_target_and_privacy_test.dart` (14 tests): UI responsif dashboard manajer, fl_chart rendering, formula harga paket resmi, target kuartal Rp 5M individual, dan isolasi privasi absensi klien.
+- `test/cloud_auth_cutover_test.dart` & `test/auth_test.dart` (28 tests): Firebase Auth cutover, reset password, dan pemblokiran akun inaktif.
 - `test/firestore_session_repository_test.dart` (16 tests): Transaksi atomik sesi, idempotensi, dan fallback ID.
 - `test/pt_packages_and_manager_metrics_test.dart` (10 tests): Perhitungan metrik triwulan, fl_chart data, dan format Rupiah.
-- `test/signature_pad_test.dart` (13 tests): Kanvas tanda tangan dan preview card.
-- `test/dedicated_signature_dialog_test.dart` (17 tests): Dialog fullscreen tanda tangan adaptif.
-- `test/manager_dashboard_test.dart` (10 tests): UI responsif dashboard manajer dan fl_chart rendering.
-- `test/pt_features_and_signature_flow_test.dart` (4 tests): Alur pembatalan sesi, pemotongan kuota, dan form paket resmi.
-- `test/ui_flow_test.dart`, `test/revision_ui_test.dart`, `test/workout_ui_test.dart`, `test/exercise_api_test.dart`: Regresi UI dan workout log.
+- `test/signature_pad_test.dart` & `test/dedicated_signature_dialog_test.dart` (30 tests): Dialog fullscreen tanda tangan adaptif dan gesture touchscreen.
+- `test/pt_features_and_signature_flow_test.dart` (4 tests): Alur pembatalan sesi, pemotongan kuota, dan form 4 paket resmi.
+- `test/ui_flow_test.dart`, `test/revision_ui_test.dart`, `test/workout_ui_test.dart`, `test/exercise_api_test.dart` (7 tests): Regresi UI dan workout log.
 
 ---
 
-## 8. Cara Menjalankan Project
+## 8. Panduan Provisioning & Akun Demo Pengujian
 
-### Prasyarat
-- Flutter SDK `^3.13.2`
-- Android SDK (API Level 21+)
-- Node.js & npm (untuk Firebase Emulator rules tests)
-- Java 17 / 21
-
-### Langkah Menjalankan
-1. Clone repository:
-   ```bash
-   git clone https://github.com/YakzIsGood/mbois-gym.git
-   cd mbois-gym
-   ```
-2. Pasang dependency:
-   ```bash
-   flutter pub get
-   ```
-3. Jalankan pengujian otomatis:
-   ```bash
-   flutter test --no-pub --platform=tester
-   ```
-4. Jalankan emulator Firestore rules:
-   ```bash
-   npm ci
-   npm run test:rules
-   ```
-5. Jalankan aplikasi pada perangkat Android:
-   ```bash
-   flutter run
-   ```
-6. Kompilasi APK debug:
-   ```bash
-   flutter build apk --debug
-   ```
-   Artefak APK tersimpan di: `build/app/outputs/flutter-apk/app-debug.apk`.
+Untuk menjaga keamanan project Firebase produksi dan mencegah kebocoran kredensial ke publik:
+- **Akun Demo Trainer & Manager**: Disediakan secara terpisah dan kredensialnya dikelola secara privat di luar repositori Git (`AKUN_DEMO_MBOIS_PRIVATE.txt`).
+- **Pemberian Kredensial**: Pemilik proyek atau penguji dapat membagikan email dan password pengujian secara privat melalui kontak langsung.
+- **Prosedur Tambah Akun Demo Baru**:
+  1. Tambahkan user di Firebase Authentication Console.
+  2. Buat dokumen profil di koleksi Firestore `users/{uid}` dengan `role: "trainer"` atau `role: "manager"` dan `status: "active"`.
+  3. Akun langsung dapat digunakan untuk login pada aplikasi.
 
 ---
 
-## 9. Batasan & Tindak Lanjut Backend
+## 9. Cara Menggunakan Versi Terbaru Setelah Merge
 
-- **Firebase Storage**: Bukti tanda tangan dan foto profil saat ini diverifikasi integritas titik sentuhannya di perangkat dan status verifikasi dicatat di Cloud Firestore. Integrasi upload blob PNG bytes ke Google Cloud Storage memerlukan aktivasi paket billing Firebase / bucket storage produksi.
-- **Multi-Device Live Sync**: Sinkronisasi data operasional berjalan secara real-time via Cloud Firestore. Uji fisik multi-device di lapangan tetap direkomendasikan untuk memvalidasi kenyamanan tanda tangan pada berbagai rasio layar sentuh.
+### A. Untuk Clone Baru (Fresh Clone)
+```bash
+git clone https://github.com/YakzIsGood/mbois-gym.git
+cd mbois-gym
+flutter pub get
+flutter run
+```
+
+### B. Untuk Pengguna yang Sudah Memiliki Clone Lama
+```bash
+# 1. Periksa status repository lokal
+git status
+
+# 2. Simpan perubahan lokal jika ada
+git stash
+
+# 3. Berpindah ke branch main dan perbarui dari upstream
+git switch main
+git pull origin main
+
+# 4. Unduh dependensi terbaru
+flutter pub get
+
+# 5. Jalankan aplikasi
+flutter run
+```
+
+Source code hasil merge dapat dilihat langsung pada repository utama:
+[https://github.com/YakzIsGood/mbois-gym](https://github.com/YakzIsGood/mbois-gym)
+
+---
+
+## 10. Batasan & Status Backend
+
+- **Firebase Storage**: Bucket Firebase Storage produksi (`mbois-gym.firebasestorage.app`) memerlukan konfigurasi bucket aktif untuk upload blob file biner ke cloud. Aplikasi saat ini menggunakan fallback rendering avatar inisial nama pelatih yang elegan dan aman saat URL foto cloud belum tersedia.
+- **Integritas Tanda Tangan**: Tanda tangan digital diverifikasi touch screen dan tersimpan aman di Firestore sebagai Base64 terkompresi, dapat ditinjau kembali pada modal riwayat sesi completed.

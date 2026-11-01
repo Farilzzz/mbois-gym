@@ -36,6 +36,13 @@ class FirebaseCloudGateway implements CloudGateway {
     final phone = (data['phone'] as String?)?.trim() ?? '';
     final role = data['role'] as String? ?? 'trainer';
     final status = data['status'] as String? ?? 'inactive';
+    final heightCm = (data['heightCm'] as num?)?.toDouble();
+    final weightKg = (data['weightKg'] as num?)?.toDouble();
+    final specialization = data['specialization'] as String? ?? '';
+    final experienceYears = (data['experienceYears'] as num?)?.toInt();
+    final certifications = data['certifications'] as String? ?? '';
+    final bio = data['bio'] as String? ?? '';
+    final photoUrl = data['photoUrl'] as String?;
 
     return CloudProfile(
       uid,
@@ -44,6 +51,14 @@ class FirebaseCloudGateway implements CloudGateway {
       email: email,
       phone: phone,
       role: role,
+      heightCm: heightCm,
+      weightKg: weightKg,
+      specialization: specialization,
+      experienceYears: experienceYears,
+      certifications: certifications,
+      bio: bio,
+      photoUrl: photoUrl,
+      status: status,
     );
   }
 
