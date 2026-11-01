@@ -568,7 +568,7 @@ class DashboardScreen extends ConsumerWidget {
                           const Text('Belum ada client terdaftar.'),
                           const SizedBox(height: 14),
                           AppDarkButton(
-                            text: '+ TAMBAH CLIENT PERTAMA',
+                            text: 'TAMBAH CLIENT PERTAMA',
                             onPressed: () => context.push('/clients/new'),
                           ),
                         ],
@@ -580,7 +580,7 @@ class DashboardScreen extends ConsumerWidget {
                 ...clients.take(4).map((c) => _ClientSummaryTile(client: c)),
                 const SizedBox(height: 12),
                 AppDarkButton(
-                  text: '+ TAMBAH CLIENT BARU',
+                  text: 'TAMBAH CLIENT BARU',
                   onPressed: () => context.push('/clients/new'),
                 ),
               ],
@@ -1163,35 +1163,95 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
+            Column(
               children: PtPackageTier.officialTiers.map((tier) {
                 final selected = _selectedTier.id == tier.id;
-                return ChoiceChip(
-                  label: Text(
-                    '${tier.name} (${tier.durationWeeks} Mg) • ${tier.formattedPrice}',
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => setState(() => _selectedTier = tier),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppColors.vibrantBlue
+                            : (isDark
+                                ? const Color(0xFF262C30)
+                                : AppColors.inputLightFill),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: selected
+                              ? AppColors.vibrantBlue
+                              : (isDark ? Colors.white24 : Colors.black12),
+                          width: selected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            selected
+                                ? Icons.check_circle
+                                : Icons.radio_button_unchecked,
+                            color: selected
+                                ? Colors.white
+                                : (isDark ? Colors.white54 : Colors.black45),
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  tier.name,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: selected
+                                        ? Colors.white
+                                        : (isDark
+                                            ? Colors.white
+                                            : AppColors.textBlack),
+                                  ),
+                                ),
+                                Text(
+                                  'Durasi: ${tier.durationWeeks} Minggu (${tier.sessionsCount} Sesi)',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: selected
+                                        ? Colors.white70
+                                        : (isDark
+                                            ? Colors.white60
+                                            : Colors.black54),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            tier.formattedPrice,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              color: selected
+                                  ? Colors.white
+                                  : AppColors.vibrantBlue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  selected: selected,
-                  selectedColor: AppColors.vibrantBlue,
-                  backgroundColor: isDark
-                      ? const Color(0xFF262C30)
-                      : AppColors.inputLightFill,
-                  labelStyle: TextStyle(
-                    color: selected
-                        ? Colors.white
-                        : (isDark ? Colors.white70 : AppColors.textBlack),
-                    fontWeight: FontWeight.bold,
-                  ),
-                  onSelected: (val) {
-                    if (val) setState(() => _selectedTier = tier);
-                  },
                 );
               }).toList(),
             ),
             const SizedBox(height: 28),
             AppDarkButton(
-              text: '+ TAMBAH & SIMPAN MEMBER',
+              text: 'TAMBAH & SIMPAN MEMBER',
               isLoading: _saving,
               onPressed: _saving ? null : _save,
             ),
@@ -1569,15 +1629,24 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Daftar Sesi Appointment',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                const Expanded(
+                  child: Text(
+                    'Daftar Sesi',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
                 if (package.status == 'active' &&
                     sessions.length < package.totalSessions)
                   ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
                     icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Jadwalkan Sesi'),
+                    label: const Text('Jadwalkan'),
                     onPressed: () async {
                       final pickedDate = await showDatePicker(
                         context: context,
@@ -1647,81 +1716,137 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
               ...displayedSessions.map(
                 (s) => Card(
                   margin: const EdgeInsets.only(bottom: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: s.status == 'completed'
+                          ? kMboisTeal.withValues(alpha: 0.4)
+                          : s.status == 'cancelled'
+                              ? Colors.red.withValues(alpha: 0.3)
+                              : Colors.grey.shade300,
+                    ),
+                  ),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        CircleAvatar(
-                          backgroundColor: s.status == 'completed'
-                              ? kMboisTeal
-                              : s.status == 'cancelled'
-                                  ? Colors.red.shade100
-                                  : Colors.grey.shade300,
-                          foregroundColor: s.status == 'completed'
-                              ? Colors.white
-                              : s.status == 'cancelled'
-                                  ? Colors.red.shade900
-                                  : Colors.black87,
-                          child: Text('${s.sessionNumber}'),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Sesi ${s.sessionNumber} • ${s.scheduledAt.day}/${s.scheduledAt.month}/${s.scheduledAt.year} ${s.scheduledAt.hour.toString().padLeft(2, '0')}:${s.scheduledAt.minute.toString().padLeft(2, '0')}',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Status: ${s.status == 'completed' ? 'HADIR' : s.status == 'cancelled' ? 'DIBATALKAN' : 'DIJADWALKAN'}${s.notes.isNotEmpty ? " • ${s.notes}" : ""}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: s.status == 'completed'
-                                      ? kMboisTeal
-                                      : s.status == 'cancelled'
-                                          ? Colors.red
-                                          : Colors.grey.shade700,
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: s.status == 'completed'
+                                  ? kMboisTeal
+                                  : s.status == 'cancelled'
+                                      ? Colors.red.shade100
+                                      : Colors.grey.shade200,
+                              foregroundColor: s.status == 'completed'
+                                  ? Colors.white
+                                  : s.status == 'cancelled'
+                                      ? Colors.red.shade900
+                                      : Colors.black87,
+                              child: Text(
+                                '${s.sessionNumber}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Sesi ${s.sessionNumber} • ${s.scheduledAt.day}/${s.scheduledAt.month}/${s.scheduledAt.year} ${s.scheduledAt.hour.toString().padLeft(2, '0')}:${s.scheduledAt.minute.toString().padLeft(2, '0')}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Status: ${s.status == 'completed' ? 'HADIR' : s.status == 'cancelled' ? 'DIBATALKAN' : 'DIJADWALKAN'}${s.notes.isNotEmpty ? " • ${s.notes}" : ""}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: s.status == 'completed'
+                                          ? kMboisTeal
+                                          : s.status == 'cancelled'
+                                              ? Colors.red
+                                              : Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (s.status == 'completed')
+                              const Chip(
+                                label: Text(
+                                  'Hadir',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                backgroundColor: kMboisTeal,
+                                visualDensity: VisualDensity.compact,
+                              )
+                            else if (s.status == 'cancelled')
+                              Chip(
+                                label: const Text(
+                                  'Dibatalkan',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                backgroundColor: Colors.red.shade50,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                          ],
                         ),
-                        if (s.status == 'scheduled' && package.status == 'active') ...[
-                          OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              side: const BorderSide(color: Colors.red),
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            onPressed: () => _cancelSession(context, s),
-                            child: const Text('Batalkan Sesi'),
-                          ),
-                          const SizedBox(width: 6),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: kMboisTeal,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            onPressed: () => _confirmDeduction(context, s),
-                            child: const Text('Potong Sesi'),
-                          ),
-                        ] else if (s.status == 'completed') ...[
-                          const Chip(
-                            label: Text('Hadir', style: TextStyle(color: Colors.white, fontSize: 11)),
-                            backgroundColor: kMboisTeal,
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ] else if (s.status == 'cancelled') ...[
-                          Chip(
-                            label: const Text('Dibatalkan', style: TextStyle(color: Colors.red, fontSize: 11)),
-                            backgroundColor: Colors.red.shade50,
-                            visualDensity: VisualDensity.compact,
+                        if (s.status == 'scheduled' &&
+                            package.status == 'active') ...[
+                          const Divider(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                icon: const Icon(Icons.close, size: 14),
+                                label: const Text(
+                                  'Batalkan Sesi',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                                onPressed: () => _cancelSession(context, s),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: kMboisTeal,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                icon: const Icon(Icons.check, size: 14),
+                                label: const Text(
+                                  'Potong Sesi',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                                onPressed: () => _confirmDeduction(context, s),
+                              ),
+                            ],
                           ),
                         ],
                       ],
@@ -5096,7 +5221,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       }
                     },
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 80),
                 ],
               ),
             ),

@@ -407,11 +407,23 @@ class _DedicatedSignatureDialogState extends State<DedicatedSignatureDialog> {
                       label: const Text('Hapus'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.red.shade700,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        visualDensity: VisualDensity.compact,
                       ),
                     ),
                     const Spacer(),
                     TextButton(
                       onPressed: _onCancel,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
                       child: const Text('Batal'),
                     ),
                     const SizedBox(width: 8),
@@ -419,6 +431,13 @@ class _DedicatedSignatureDialogState extends State<DedicatedSignatureDialog> {
                       onPressed: _onSave,
                       icon: const Icon(Icons.check, size: 16),
                       label: const Text('Simpan'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
                     ),
                   ],
                 ),
@@ -577,12 +596,17 @@ class SignaturePreviewCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                signerLabel,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  signerLabel,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 8),
               if (hasSig)
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -594,16 +618,16 @@ class SignaturePreviewCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(color: Colors.green, width: 1),
                   ),
-                  child: Row(
+                  child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.check_circle,
                         size: 12,
                         color: Colors.green,
                       ),
-                      const SizedBox(width: 4),
-                      const Text(
+                      SizedBox(width: 4),
+                      Text(
                         'Terverifikasi',
                         style: TextStyle(
                           fontSize: 11,
@@ -611,16 +635,6 @@ class SignaturePreviewCard extends StatelessWidget {
                           color: Colors.green,
                         ),
                       ),
-                      if (_effectiveTimestamp != null) ...[
-                        const SizedBox(width: 6),
-                        Text(
-                          _formatDate(_effectiveTimestamp!),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.green.shade800,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 )
@@ -653,6 +667,13 @@ class SignaturePreviewCard extends StatelessWidget {
                 ),
             ],
           ),
+          if (hasSig && _effectiveTimestamp != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Waktu tanda tangan: ${_formatDate(_effectiveTimestamp!)}',
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+            ),
+          ],
           const SizedBox(height: 8),
           Container(
             height: height,

@@ -194,6 +194,50 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
     await assertFails(updateDoc(doc(dbFor('pt1'), 'clients/c1/sessions/old'), { status: 'completed' }));
     await assertFails(setDoc(doc(dbFor('pt1'), 'clients/c1/sessions/bad'), { status: 'completed', sessionNumber: 1 }));
   });
+  it('package_sales allows active manager read all, trainer read own and create own; denies update/delete and tampering', async () => {
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' });
+      await setDoc(doc(ctx.firestore(), 'package_sales/s1'), {
+        clientId: 'c1',
+        clientName: 'Budi',
+        trainerId: 'pt1',
+        trainerName: 'Coach 1',
+        tierName: 'Paket 10 Sesi',
+        sessionsCount: 10,
+        durationWeeks: 4,
+        price: 1000000,
+        status: 'valid',
+      });
+    });
+    await assertSucceeds(read('manager', 'package_sales/s1'));
+    await assertSucceeds(getDocs(collection(dbFor('manager'), 'package_sales')));
+    await assertSucceeds(read('pt1', 'package_sales/s1'));
+    await assertFails(read('pt2', 'package_sales/s1'));
+    await assertSucceeds(setDoc(doc(dbFor('pt1'), 'package_sales/s2'), {
+      clientId: 'c1',
+      clientName: 'Budi',
+      trainerId: 'pt1',
+      trainerName: 'Coach 1',
+      tierName: 'Paket 4 Sesi',
+      sessionsCount: 4,
+      durationWeeks: 4,
+      price: 500000,
+      status: 'valid',
+    }));
+    await assertFails(setDoc(doc(dbFor('pt1'), 'package_sales/s3'), {
+      clientId: 'c1',
+      clientName: 'Budi',
+      trainerId: 'pt2',
+      trainerName: 'Coach 2',
+      tierName: 'Paket 4 Sesi',
+      sessionsCount: 4,
+      durationWeeks: 4,
+      price: 500000,
+      status: 'valid',
+    }));
+    await assertFails(updateDoc(doc(dbFor('manager'), 'package_sales/s1'), { price: 2000000 }));
+    await assertFails(deleteDoc(doc(dbFor('pt1'), 'package_sales/s1')));
+  });
   it('legacy root resources, unknown paths, deeper nesting and collection groups denied', async () => {
     for (const path of ['pt_packages/old', 'workout_logs/old', 'unknown/doc', 'clients/c1/sessions/old/secret/data']) await assertFails(read('pt1', path));
     await assertFails(getDocs(collectionGroup(dbFor('pt1'), 'sessions')));

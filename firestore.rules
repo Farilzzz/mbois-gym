@@ -134,5 +134,15 @@ service cloud.firestore {
         && request.resource.data.name is string;
       allow delete: if activeManager();
     }
+    match /package_sales/{saleId} {
+      allow read: if activeManager() || (activeTrainer() && resource.data.trainerId == request.auth.uid);
+      allow create: if (activeManager() || activeTrainer())
+        && request.resource.data.keys().hasAll(['clientId', 'clientName', 'trainerId', 'trainerName', 'tierName', 'sessionsCount', 'durationWeeks', 'price', 'status'])
+        && request.resource.data.price is number && request.resource.data.price >= 0
+        && request.resource.data.sessionsCount is int && request.resource.data.sessionsCount > 0
+        && request.resource.data.status in ['valid', 'refunded']
+        && (activeManager() || request.resource.data.trainerId == request.auth.uid);
+      allow update, delete: if false;
+    }
   }
 }

@@ -225,17 +225,23 @@ class AppDarkButton extends StatelessWidget {
             )
           : Row(
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 if (icon != null) ...[
                   Icon(icon, size: 20, color: Colors.white),
                   const SizedBox(width: 8),
                 ],
-                Text(
-                  text,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.8,
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      text,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
                   ),
                 ),
               ],
