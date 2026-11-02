@@ -1,7 +1,7 @@
 const { readFileSync } = require('node:fs');
 const assert = require('node:assert/strict');
 const { initializeTestEnvironment, assertFails, assertSucceeds } = require('@firebase/rules-unit-testing');
-const { doc, collection, collectionGroup, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where } = require('firebase/firestore');
+const { doc, collection, collectionGroup, getDoc, getDocs, setDoc, updateDoc, deleteDoc, query, where, runTransaction, serverTimestamp } = require('firebase/firestore');
 
 const projectId = 'demo-mbois-gym';
 const descendants = ['packages', 'sessions', 'workouts', 'evaluations', 'assessments', 'progress_measurements', 'assignment_history'];
@@ -278,5 +278,325 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
   it('legacy root resources, unknown paths, deeper nesting and collection groups denied', async () => {
     for (const path of ['pt_packages/old', 'workout_logs/old', 'unknown/doc', 'clients/c1/sessions/old/secret/data']) await assertFails(read('pt1', path));
     await assertFails(getDocs(collectionGroup(dbFor('pt1'), 'sessions')));
+  });
+
+  describe('Atomic completion transaction and getAfter coupled rules (real emulator)', () => {
+    const validClientStrokes = [
+      { points: [{ x: 10.5, y: 20.5 }, { x: 15.0, y: 25.0 }] }
+    ];
+    const validCoachStrokes = [
+      { points: [{ x: 30.0, y: 40.0 }, { x: 35.0, y: 45.0 }] }
+    ];
+
+    it('atomic transaction completes scheduled session and increments quota with verified signatures', async () => {
+      const db = dbFor('pt1');
+      const pkgRef = doc(db, 'clients/c1/packages/pkg_tx_1');
+      const sessionRef = doc(db, 'clients/c1/sessions/s_tx_1');
+
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'clients/c1/packages/pkg_tx_1'), {
+          totalSessions: 4,
+          completedCount: 0,
+          status: 'active',
+        });
+        await setDoc(doc(ctx.firestore(), 'clients/c1/sessions/s_tx_1'), {
+          packageIntId: 1,
+          packageDocId: 'pkg_tx_1',
+          sessionNumber: 1,
+          scheduledTime: new Date(),
+          status: 'scheduled',
+        });
+      });
+
+      await assertSucceeds(runTransaction(db, async (tx) => {
+        const pSnap = await tx.get(pkgRef);
+        const sSnap = await tx.get(sessionRef);
+        assert.equal(pSnap.data().completedCount, 0);
+        assert.equal(sSnap.data().status, 'scheduled');
+
+        tx.update(pkgRef, {
+          completedCount: 1,
+          lastCompletedSessionId: 's_tx_1',
+          updatedAt: serverTimestamp(),
+        });
+        tx.update(sessionRef, {
+          status: 'completed',
+          completedAt: serverTimestamp(),
+          packageDocId: 'pkg_tx_1',
+          notes: 'Sesi 1 berhasil',
+          clientSignatureStatus: 'verified',
+          coachSignatureStatus: 'verified',
+          clientSignatureStrokes: validClientStrokes,
+          coachSignatureStrokes: validCoachStrokes,
+          clientName: 'Client 1',
+          trainerName: 'PT 1',
+        });
+      }));
+
+      const pAfter = await read('pt1', 'clients/c1/packages/pkg_tx_1');
+      assert.equal(pAfter.data().completedCount, 1);
+      assert.equal(pAfter.data().status, 'active');
+
+      const sAfter = await read('pt1', 'clients/c1/sessions/s_tx_1');
+      assert.equal(sAfter.data().status, 'completed');
+      assert.equal(sAfter.data().clientSignatureStatus, 'verified');
+    });
+
+    it('completing final session atomically closes package status to closed', async () => {
+      const db = dbFor('pt1');
+      const pkgRef = doc(db, 'clients/c1/packages/pkg_last');
+      const sessionRef = doc(db, 'clients/c1/sessions/s_last');
+
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'clients/c1/packages/pkg_last'), {
+          totalSessions: 2,
+          completedCount: 1,
+          status: 'active',
+        });
+        await setDoc(doc(ctx.firestore(), 'clients/c1/sessions/s_last'), {
+          packageIntId: 2,
+          packageDocId: 'pkg_last',
+          sessionNumber: 2,
+          scheduledTime: new Date(),
+          status: 'scheduled',
+        });
+      });
+
+      await assertSucceeds(runTransaction(db, async (tx) => {
+        tx.update(pkgRef, {
+          completedCount: 2,
+          status: 'closed',
+          lastCompletedSessionId: 's_last',
+          closedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        tx.update(sessionRef, {
+          status: 'completed',
+          completedAt: serverTimestamp(),
+          packageDocId: 'pkg_last',
+          notes: 'Sesi penutup paket',
+          clientSignatureStatus: 'verified',
+          coachSignatureStatus: 'verified',
+          clientSignatureStrokes: validClientStrokes,
+          coachSignatureStrokes: validCoachStrokes,
+        });
+      }));
+
+      const pAfter = await read('pt1', 'clients/c1/packages/pkg_last');
+      assert.equal(pAfter.data().completedCount, 2);
+      assert.equal(pAfter.data().status, 'closed');
+    });
+
+    it('counter forgery denied: cannot increment package quota without completing session', async () => {
+      const db = dbFor('pt1');
+      const pkgRef = doc(db, 'clients/c1/packages/pkg_forge');
+
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'clients/c1/packages/pkg_forge'), {
+          totalSessions: 4,
+          completedCount: 0,
+          status: 'active',
+        });
+      });
+
+      // Attempt single update without coupled session
+      await assertFails(updateDoc(pkgRef, {
+        completedCount: 1,
+        lastCompletedSessionId: 'non_existent_session',
+      }));
+    });
+
+    it('session completion forgery denied: cannot complete session without coupled quota increment', async () => {
+      const db = dbFor('pt1');
+      const sessionRef = doc(db, 'clients/c1/sessions/s_forge');
+
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'clients/c1/packages/pkg_forge_2'), {
+          totalSessions: 4,
+          completedCount: 0,
+          status: 'active',
+        });
+        await setDoc(doc(ctx.firestore(), 'clients/c1/sessions/s_forge'), {
+          packageIntId: 1,
+          packageDocId: 'pkg_forge_2',
+          sessionNumber: 1,
+          scheduledTime: new Date(),
+          status: 'scheduled',
+        });
+      });
+
+      // Attempt single update without coupled package
+      await assertFails(updateDoc(sessionRef, {
+        status: 'completed',
+        completedAt: new Date(),
+        packageDocId: 'pkg_forge_2',
+        clientSignatureStatus: 'verified',
+        coachSignatureStatus: 'verified',
+        clientSignatureStrokes: validClientStrokes,
+        coachSignatureStrokes: validCoachStrokes,
+      }));
+    });
+
+    it('double debit denied: completing an already completed session fails', async () => {
+      const db = dbFor('pt1');
+      const pkgRef = doc(db, 'clients/c1/packages/pkg_double');
+      const sessionRef = doc(db, 'clients/c1/sessions/s_double');
+
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'clients/c1/packages/pkg_double'), {
+          totalSessions: 4,
+          completedCount: 1,
+          status: 'active',
+        });
+        await setDoc(doc(ctx.firestore(), 'clients/c1/sessions/s_double'), {
+          packageIntId: 1,
+          packageDocId: 'pkg_double',
+          sessionNumber: 1,
+          scheduledTime: new Date(),
+          status: 'completed',
+          completedAt: new Date(),
+        });
+      });
+
+      await assertFails(runTransaction(db, async (tx) => {
+        tx.update(pkgRef, {
+          completedCount: 2,
+          lastCompletedSessionId: 's_double',
+        });
+        tx.update(sessionRef, {
+          status: 'completed',
+          completedAt: serverTimestamp(),
+          packageDocId: 'pkg_double',
+          clientSignatureStatus: 'verified',
+          coachSignatureStatus: 'verified',
+          clientSignatureStrokes: validClientStrokes,
+          coachSignatureStrokes: validCoachStrokes,
+        });
+      }));
+    });
+
+    it('quota exhaustion protected: cannot complete session if package quota reached', async () => {
+      const db = dbFor('pt1');
+      const pkgRef = doc(db, 'clients/c1/packages/pkg_exhausted');
+      const sessionRef = doc(db, 'clients/c1/sessions/s_extra');
+
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'clients/c1/packages/pkg_exhausted'), {
+          totalSessions: 4,
+          completedCount: 4,
+          status: 'closed',
+        });
+        await setDoc(doc(ctx.firestore(), 'clients/c1/sessions/s_extra'), {
+          packageIntId: 1,
+          packageDocId: 'pkg_exhausted',
+          sessionNumber: 5,
+          scheduledTime: new Date(),
+          status: 'scheduled',
+        });
+      });
+
+      await assertFails(runTransaction(db, async (tx) => {
+        tx.update(pkgRef, {
+          completedCount: 5,
+          lastCompletedSessionId: 's_extra',
+        });
+        tx.update(sessionRef, {
+          status: 'completed',
+          completedAt: serverTimestamp(),
+          packageDocId: 'pkg_exhausted',
+          clientSignatureStatus: 'verified',
+          coachSignatureStatus: 'verified',
+          clientSignatureStrokes: validClientStrokes,
+          coachSignatureStrokes: validCoachStrokes,
+        });
+      }));
+    });
+
+    it('unauthorized PT denied: non-assigned PT cannot complete session', async () => {
+      const db = dbFor('pt2'); // PT2 is not assigned to c1
+      const pkgRef = doc(db, 'clients/c1/packages/pkg_tx_unauth');
+      const sessionRef = doc(db, 'clients/c1/sessions/s_tx_unauth');
+
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'clients/c1/packages/pkg_tx_unauth'), {
+          totalSessions: 4,
+          completedCount: 0,
+          status: 'active',
+        });
+        await setDoc(doc(ctx.firestore(), 'clients/c1/sessions/s_tx_unauth'), {
+          packageIntId: 1,
+          packageDocId: 'pkg_tx_unauth',
+          sessionNumber: 1,
+          scheduledTime: new Date(),
+          status: 'scheduled',
+        });
+      });
+
+      await assertFails(runTransaction(db, async (tx) => {
+        tx.update(pkgRef, {
+          completedCount: 1,
+          lastCompletedSessionId: 's_tx_unauth',
+        });
+        tx.update(sessionRef, {
+          status: 'completed',
+          completedAt: serverTimestamp(),
+          packageDocId: 'pkg_tx_unauth',
+          clientSignatureStatus: 'verified',
+          coachSignatureStatus: 'verified',
+          clientSignatureStrokes: validClientStrokes,
+          coachSignatureStrokes: validCoachStrokes,
+        });
+      }));
+    });
+
+    it('malformed signature rejected: empty strokes or invalid structure denied', async () => {
+      const db = dbFor('pt1');
+      const pkgRef = doc(db, 'clients/c1/packages/pkg_bad_sig');
+      const sessionRef = doc(db, 'clients/c1/sessions/s_bad_sig');
+
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'clients/c1/packages/pkg_bad_sig'), {
+          totalSessions: 4,
+          completedCount: 0,
+          status: 'active',
+        });
+        await setDoc(doc(ctx.firestore(), 'clients/c1/sessions/s_bad_sig'), {
+          packageIntId: 1,
+          packageDocId: 'pkg_bad_sig',
+          sessionNumber: 1,
+          scheduledTime: new Date(),
+          status: 'scheduled',
+        });
+      });
+
+      await assertFails(runTransaction(db, async (tx) => {
+        tx.update(pkgRef, {
+          completedCount: 1,
+          lastCompletedSessionId: 's_bad_sig',
+        });
+        tx.update(sessionRef, {
+          status: 'completed',
+          completedAt: serverTimestamp(),
+          packageDocId: 'pkg_bad_sig',
+          clientSignatureStatus: 'verified',
+          coachSignatureStatus: 'verified',
+          clientSignatureStrokes: [], // Empty strokes should be rejected!
+          coachSignatureStrokes: [],
+        });
+      }));
+    });
+
+    it('privacy retention: active manager cannot read completed session or signature data', async () => {
+      await env.withSecurityRulesDisabled(async ctx => {
+        await setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' });
+        await setDoc(doc(ctx.firestore(), 'clients/c1/sessions/s_priv'), {
+          status: 'completed',
+          clientSignatureStrokes: validClientStrokes,
+        });
+      });
+
+      await assertFails(read('manager', 'clients/c1/sessions/s_priv'));
+      await assertFails(getDocs(collection(dbFor('manager'), 'clients/c1/sessions')));
+    });
   });
 });

@@ -39,6 +39,41 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['note', 'updatedAt']);
     }
 
+    function isValidSessionCompletion(clientId, sessionId) {
+      let pkgDocId = ('packageDocId' in request.resource.data)
+        ? request.resource.data.packageDocId
+        : (('packageDocId' in resource.data) ? resource.data.packageDocId : null);
+      let pkgRef = /databases/$(database)/documents/clients/$(clientId)/packages/$(pkgDocId);
+      let pkgBefore = get(pkgRef).data;
+      let pkgAfter = getAfter(pkgRef).data;
+
+      return pkgDocId != null
+        && exists(pkgRef)
+        && pkgBefore.status == 'active'
+        && pkgBefore.completedCount < pkgBefore.totalSessions
+        && pkgAfter.completedCount == pkgBefore.completedCount + 1
+        && (pkgAfter.completedCount < pkgBefore.totalSessions
+            ? pkgAfter.status == 'active'
+            : pkgAfter.status == 'closed')
+        && ('lastCompletedSessionId' in pkgAfter && pkgAfter.lastCompletedSessionId == sessionId);
+    }
+
+    function isValidPackageQuotaIncrement(clientId, packageId) {
+      let sId = ('lastCompletedSessionId' in request.resource.data)
+        ? request.resource.data.lastCompletedSessionId
+        : null;
+      let sessionRef = /databases/$(database)/documents/clients/$(clientId)/sessions/$(sId);
+      let sessionBefore = get(sessionRef).data;
+      let sessionAfter = getAfter(sessionRef).data;
+
+      return sId != null
+        && exists(sessionRef)
+        && sessionBefore.status == 'scheduled'
+        && sessionAfter.status == 'completed'
+        && (('packageDocId' in sessionAfter && sessionAfter.packageDocId == packageId)
+            || ('packageIntId' in sessionAfter && 'id' in resource.data && sessionAfter.packageIntId == resource.data.id));
+    }
+
     // Roles/profiles are provisioned by trusted administration only.
     match /users/{uid} {
       allow get: if (signedIn() && request.auth.uid == uid) || activeManager();
@@ -72,11 +107,25 @@ service cloud.firestore {
           && request.resource.data.keys().hasAll(['totalSessions', 'completedCount', 'status'])
           && request.resource.data.totalSessions is int && request.resource.data.totalSessions > 0
           && request.resource.data.completedCount == 0 && request.resource.data.status == 'active';
-        // A client cannot forge the quota counter, even inside a transaction.
         allow update: if clientAccess(clientId)
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['completedCount', 'totalSessions'])
-          && (request.resource.data.status == resource.data.status
-            || (resource.data.status == 'active' && request.resource.data.status == 'closed'));
+          && (
+            (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['completedCount', 'totalSessions'])
+              && (request.resource.data.status == resource.data.status
+                || (resource.data.status == 'active' && request.resource.data.status == 'closed'))
+            )
+            ||
+            (
+              resource.data.status == 'active'
+              && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['totalSessions'])
+              && request.resource.data.completedCount == resource.data.completedCount + 1
+              && request.resource.data.completedCount <= resource.data.totalSessions
+              && (request.resource.data.completedCount == resource.data.totalSessions
+                  ? request.resource.data.status == 'closed'
+                  : request.resource.data.status == 'active')
+              && isValidPackageQuotaIncrement(clientId, packageId)
+            )
+          );
         allow delete: if false;
       }
       match /sessions/{sessionId} {
@@ -88,11 +137,34 @@ service cloud.firestore {
           && request.resource.data.scheduledTime is timestamp
           && request.resource.data.status == 'scheduled'
           && !('completedAt' in request.resource.data);
-        // Completion plus package quota requires a trusted backend. Client SDK writes fail closed.
         allow update: if clientAccess(clientId)
-          && resource.data.status == 'scheduled'
-          && request.resource.data.status in ['scheduled', 'cancelled']
-          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['packageIntId', 'sessionNumber', 'completedAt']);
+          && (
+            (
+              resource.data.status == 'scheduled'
+              && request.resource.data.status in ['scheduled', 'cancelled']
+              && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['packageIntId', 'sessionNumber', 'completedAt'])
+            )
+            ||
+            (
+              resource.data.status == 'scheduled'
+              && request.resource.data.status == 'completed'
+              && request.resource.data.completedAt is timestamp
+              && request.resource.data.clientSignatureStatus == 'verified'
+              && request.resource.data.coachSignatureStatus == 'verified'
+              && request.resource.data.clientSignatureStrokes is list
+              && request.resource.data.clientSignatureStrokes.size() > 0
+              && request.resource.data.clientSignatureStrokes[0] is map
+              && request.resource.data.clientSignatureStrokes[0].keys().hasAll(['points'])
+              && request.resource.data.clientSignatureStrokes[0].points is list
+              && request.resource.data.coachSignatureStrokes is list
+              && request.resource.data.coachSignatureStrokes.size() > 0
+              && request.resource.data.coachSignatureStrokes[0] is map
+              && request.resource.data.coachSignatureStrokes[0].keys().hasAll(['points'])
+              && request.resource.data.coachSignatureStrokes[0].points is list
+              && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['packageIntId', 'sessionNumber', 'scheduledTime'])
+              && isValidSessionCompletion(clientId, sessionId)
+            )
+          );
         allow delete: if false;
       }
       match /workouts/{workoutId} {

@@ -44,10 +44,27 @@ function parseArgs(args) {
       options.help = true;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
+    } else if (arg === '--apply') {
+      options.apply = true;
+      options.dryRun = false;
     } else if (arg === '--project') {
       options.project = args[++i];
     } else if (arg.startsWith('--project=')) {
       options.project = arg.split('=')[1];
+    } else if (arg === '--year') {
+      options.year = parseInt(args[++i], 10);
+    } else if (arg.startsWith('--year=')) {
+      options.year = parseInt(arg.split('=')[1], 10);
+    } else if (arg === '--quarter' || arg === '-q') {
+      options.quarter = parseInt(args[++i], 10);
+    } else if (arg.startsWith('--quarter=')) {
+      options.quarter = parseInt(arg.split('=')[1], 10);
+    } else if (arg === '--timezone' || arg === '--tz') {
+      options.timezone = args[++i];
+    } else if (arg.startsWith('--timezone=') || arg.startsWith('--tz=')) {
+      options.timezone = arg.split('=')[1];
+    } else if (arg === '--json') {
+      options.json = true;
     } else if (arg === '--role') {
       options.role = args[++i];
     } else if (arg.startsWith('--role=')) {
@@ -92,9 +109,11 @@ function parseArgs(args) {
   } else if (command === 'create-manager') {
     command = 'create';
     options.role = 'manager';
+  } else if (command === 'sync-projection' || command === 'projection-sync') {
+    command = 'sync-projections';
   }
 
-  const VALID_COMMANDS = ['create', 'provision-existing', 'status', 'disable', 'reset-link', 'help'];
+  const VALID_COMMANDS = ['create', 'provision-existing', 'status', 'disable', 'reset-link', 'sync-projections', 'help'];
   if (!VALID_COMMANDS.includes(command)) {
     throw new Error(`Perintah tidak valid: '${command}'. Pilih salah satu: ${VALID_COMMANDS.join(', ')}`);
   }
@@ -105,6 +124,12 @@ function parseArgs(args) {
   }
   if (options.project !== ALLOWED_PROJECT) {
     throw new Error(`Project '${options.project}' tidak diizinkan. CLI ini dibatasi secara eksplisit untuk project '${ALLOWED_PROJECT}'.`);
+  }
+
+  if (command === 'sync-projections') {
+    if (options.quarter !== undefined && (!Number.isInteger(options.quarter) || options.quarter < 1 || options.quarter > 4)) {
+      throw new Error(`Kuartal tidak valid: ${options.quarter}. Harus bernilai 1-4.`);
+    }
   }
 
   // Validate UID if present (alphanumeric, no path traversal)
@@ -188,6 +213,12 @@ PERINTAH YANG TERSEDIA:
                     Contoh:
                       node ./admin.cjs reset-link --project mbois-gym --email babangfaril5@gmail.com
 
+  sync-projections  Membangun atau mensinkronkan read-model dashboard manajer.
+                    Alias: sync-projection, projection-sync.
+                    Contoh:
+                      node ./admin.cjs sync-projections --project mbois-gym --year 2026 --quarter 1
+                      node ./admin.cjs sync-projections --project mbois-gym --apply
+
 OPSI GLOBAL:
   --project <id>    Wajib diisi secara eksplisit: 'mbois-gym'.
   --dry-run         Mensimulasikan eksekusi tanpa mengubah data di Auth atau Firestore.
@@ -227,8 +258,9 @@ async function runCli(args, serviceOverride = null) {
   }
 
   let service = serviceOverride;
+  let adminInstances = null;
   if (!service) {
-    const adminInstances = initFirebaseAdmin(parsed.project);
+    adminInstances = initFirebaseAdmin(parsed.project);
     service = new AdminService(adminInstances);
   }
 
@@ -275,6 +307,27 @@ async function runCli(args, serviceOverride = null) {
         email: parsed.email,
       });
       break;
+
+    case 'sync-projections': {
+      if (service && typeof service.syncProjections === 'function') {
+        result = await service.syncProjections(parsed);
+      } else {
+        const { runProjectionJob } = require('../projections/builder.cjs');
+        const db = (service && service.firestore)
+          ? service.firestore
+          : (adminInstances ? adminInstances.firestore : initFirebaseAdmin(parsed.project).firestore);
+        result = await runProjectionJob(db, {
+          project: parsed.project,
+          year: parsed.year,
+          quarter: parsed.quarter,
+          timezone: parsed.timezone,
+          apply: parsed.apply === true,
+          dryRun: parsed.apply ? false : (parsed.dryRun !== undefined ? parsed.dryRun : true),
+          json: parsed.json || false,
+        });
+      }
+      break;
+    }
 
     default:
       throw new Error(`Perintah tidak didukung: ${parsed.command}`);

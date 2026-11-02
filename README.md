@@ -72,23 +72,35 @@ Sistem login didesain khusus untuk staf internal gym (Personal Trainer dan Manag
 
 ### A. TRAINER (Personal Trainer)
 Trainer hanya memiliki akses ke data klien dan sesi yang ditugaskan kepada dirinya (`assignedTrainerIds`).
-- **Home & Lifecycle Klien**: Memantau klien aktif yang memiliki sisa kuota sesi. Klien yang selesai atau dibatalkan otomatis dipindahkan dari feed aktif.
+- **Home & Lifecycle Klien**: Memantau klien aktif yang memiliki sisa kuota sesi. Klien yang dibatalkan atau selesai dipindahkan secara konsisten ke tab status yang tepat.
 - **Penjadwalan Fleksibel**: Menambah jadwal appointment sesi, mengedit tanggal dan jam sesi terencana (*planned*) tanpa menghapus sesi, serta membatalkan sesi (pembatalan langsung mengembalikan slot penjadwalan tanpa memotong kuota paket klien).
-- **Absensi & Potong Kuota**: Modal tanda tangan digital fullscreen touchscreen mengumpulkan tanda tangan asli Klien dan Coach secara terpisah, memotong kuota tepat satu kali secara atomik di Firestore.
+- **Absensi & Potong Kuota Atomik**: Modal tanda tangan digital responsif touchscreen mengumpulkan tanda tangan asli Klien dan Coach secara terpisah, memotong kuota tepat satu kali secara atomik dan idempoten di Firestore.
+- **Format Tanda Tangan Kompatibel**: Koordinat goresan tanda tangan diserialisasi sebagai `array of map` (`[{x, y}]`) yang didukung penuh oleh Cloud Firestore (mencegah error serialisasi array bersarang).
 - **Riwayat Sesi Selesai**: Membuka dialog detail riwayat sesi pada tab "Hadir" untuk melihat tanggal, nama klien, catatan latihan, dan pratinjau kedua tanda tangan asli.
-- **Profil Coach**: Meninjau dan memperbarui spesialisasi, TB, BB, nomor WhatsApp, dan bio pelatih.
+- **Profil Coach**: Meninjau dan memperbarui spesialisasi, TB, BB, nomor WhatsApp, dan bio pelatih menggunakan Avatar Inisial otomatis.
 
 ### B. MANAGER (Manajer Operasional)
 Manajer memiliki hak pantau terhadap seluruh Personal Trainer untuk kebutuhan supervisi dan pelaporan target bisnis.
-- **Dashboard Manajemen PT**: Menampilkan indikator Total PT Aktif, Klien Aktif, Paket Terjual, serta Nilai Penjualan Triwulan.
-- **Target Penjualan Rp 5.000.000 per PT per Triwulan**: Menampilkan perbandingan performa masing-masing PT terhadap target kuartal kalender dengan visualisasi batang fl_chart dan indikator pemenuhan target.
-- **Detail PT & Klien**: Manajer dapat memilih PT untuk melihat profil dan daftar klien bimbingannya.
+- **Navigasi Terisolasi Tanpa Navbar Trainer**: Role Manager tidak menampilkan `BottomNavigationBar` milik Trainer (Home, Klien, Profil PT). Navigasi dipusatkan pada Dashboard Manajemen PT dengan akses profil Manager melalui icon profil di AppBar kanan atas.
+- **Halaman Profil Khusus Manager (`ManagerProfileScreen`)**: Hanya menampilkan identitas Nama, Email, Badge Role Manager, fungsi Ubah Nama, Kirim Link Reset Password, dan Logout. Bebas dari formulir fisik (TB/BB) dan menu pelatih.
+- **Otomatisasi Deteksi Trainer & Klien**: Dashboard secara otomatis mendeteksi seluruh akun Trainer berstatus `active` dan klien terdaftar langsung dari koleksi operasional Firestore, sehingga jumlah PT aktif tidak akan bernilai 0 meskipun proyeksi triwulan belum digenerate.
+- **Target Penjualan Rp 5.000.000 per PT per Triwulan**: Menampilkan visualisasi performa penjualan triwulan per PT dengan grafik batang fl_chart dan indikator pencapaian target.
 - **Isolasi Privasi Absensi Read-Only**: Ketika membuka detail klien, manajer **hanya disajikan informasi absensi operasional** (nama klien, nama paket, tanggal/jam sesi, status kehadiran, sesi dihadiri vs sisa sesi).
 - **Perlindungan Backend**: Asesmen fisik medis, riwayat cedera, program beban/workout log harian, dan tanda tangan digital Klien **diblokir di level Security Rules Firestore** dan tidak diizinkan dibaca oleh role Manager.
 
 ---
 
-## 4. Pricelist Resmi Paket PT & Target Triwulan
+## 4. Komponen Avatar Inisial (InitialAvatar)
+
+Aplikasi mengadopsi komponen visual inisial nama tanpa bergantung pada layanan cloud storage:
+- **Prinsip Tampilan**: Menampilkan huruf pertama dari Nama Pengguna dalam format kapital (misal: "Faril" → "F", "Akbar" → "A", "Dimas" → "D", "Manager" → "M").
+- **Fallback Cerdas**: Jika Nama belum diisi, avatar mengambil huruf pertama dari alamat Email. Jika keduanya kosong, sistem menampilkan ikon person default.
+- **Palet Warna Lembut**: Warna latar belakang avatar dihitung secara deterministik berdasarkan hash nama, menghasilkan visual yang elegan, kontras, dan ramah pengguna.
+- **Tanpa Firebase Storage**: Menghapus tombol upload foto dan picker galeri pada formulir profil, sehingga operasional avatar 100% mandiri, bebas biaya penyimpanan eksternal, dan tidak bergantung pada konfigurasi bucket storage.
+
+---
+
+## 5. Pricelist Resmi Paket PT & Target Triwulan
 
 ### A. Tarif Paket Personal Trainer Individu
 Mbois Gym memberlakukan 4 pilihan paket PT individu baku:
@@ -101,7 +113,7 @@ Mbois Gym memberlakukan 4 pilihan paket PT individu baku:
 | **Paket 24 Sesi** | 24 sesi | 8 minggu | **Rp 2.000.000** |
 
 Perhitungan kuota penjadwalan:
-$$\\text{Slot Tersedia} = \\text{Total Sesi Paket} - \\text{Sesi Hadir} - \\text{Jadwal Aktif Terencana}$$
+$$\text{Slot Tersedia} = \text{Total Sesi Paket} - \text{Sesi Hadir} - \text{Jadwal Aktif Terencana}$$
 
 ### B. Periode Kuartal Kalender Target Rp 5.000.000
 Target individual Rp 5.000.000 dihitung per Personal Trainer per kuartal:
@@ -112,7 +124,7 @@ Target individual Rp 5.000.000 dihitung per Personal Trainer per kuartal:
 
 ---
 
-## 5. Tool Pengelola: Firebase Admin CLI & Projections
+## 6. Tool Pengelola: Firebase Admin CLI & Projections
 
 Untuk menjaga kepatuhan arsitektur keamanan, seluruh proses pembuatan akun, penetapan role, dan penyusunan proyeksi dashboard dijalankan melalui script CLI administratif di luar aplikasi Flutter (tidak menyimpan Service Account atau secret di dalam source code mobile atau git).
 
@@ -177,7 +189,22 @@ Terletak di direktori `tools/projections`, tool ini membaca transaksi penjualan 
 
 ---
 
-## 6. Kebijakan Kredensial & Akun Demo
+## 7. Penanganan Potong Sesi & Error Firestore
+
+### A. Akar Masalah Pemotongan Sesi Lama
+Pada pengujian sebelumnya, kegagalan saat menekan "Verifikasi & Potong Sesi" disebabkan oleh:
+1. **Serialisasi Array Bersarang (Nested Arrays)**: Titik-titik goresan kanvas disimpan dalam struktur `List<List<double>>` yang dilarang secara ketat oleh Cloud Firestore Data Model.
+2. **Security Rules State Transition**: Aturan Firestore sebelumnya memblokir pembaruan status sesi menjadi `completed` serta pembaruan atribut `completedCount` pada subkoleksi `packages`.
+
+### B. Solusi Arsitektur
+1. **Format Serialisasi Bebas Array Bersarang**: Goresan kanvas diubah menjadi format peta terstruktur `points: [{x: 12.3, y: 45.6}]` serta string data Base64 aman.
+2. **Aturan `getAfter` Terkopel**: Security rules disempurnakan untuk memvalidasi bahwa setiap perubahan status sesi ke `completed` harus diiringi dengan penambahan counter `completedCount` tepat +1 pada dokumen paket terkait milik klien dalam transaksi atomik yang sama.
+3. **Idempotensi Transaksi**: Jika sesi sudah berstatus `completed`, transaksi otomatis menghentikan pemotongan berulang dan merekonsiliasi state lokal tanpa menduplikasi pemotongan kuota.
+4. **Penyampaian Pesan Error Ramah Pengguna**: Error teknis (`permission-denied`, `failed-precondition`, `unavailable`) diterjemahkan menjadi pesan berbahasa Indonesia yang jelas pada antarmuka aplikasi sambil mencatat `FirebaseException.code` pada debug console.
+
+---
+
+## 8. Kebijakan Kredensial & Akun Demo
 
 Untuk mencegah kebocoran data klien riil dan melindungi integritas database produksi:
 - **Tidak Ada Hardcoded Secret**: Repositori git ini bebas dari private keys, service account JSON, maupun password akun staf.
@@ -186,25 +213,25 @@ Untuk mencegah kebocoran data klien riil dan melindungi integritas database prod
 
 ---
 
-## 7. Rangkuman Pengujian & Verifikasi Kualitas
+## 9. Rangkuman Pengujian & Verifikasi Kualitas
 
 Seluruh suite pengujian telah divalidasi dan berjalan hijau:
 
 | Komponen Pengujian | Perintah Eksekusi | Status Validasi |
 |---|---|---|
-| **Firestore Security Rules** | `npm run test:rules` | **59 tests passed** (0 failed) |
+| **Firestore Security Rules** | `npm run test:rules` | **68 tests passed** (0 failed) |
 | **Flutter Static Analysis** | `flutter analyze --no-fatal-infos` | **0 errors, 0 warnings** (Clean) |
-| **Flutter Unit & Widget Tests** | `flutter test` | **130 tests passed** (0 failed) |
-| **Admin CLI Suite** | `cd tools/admin && npm test` | **12 tests passed** (0 failed) |
+| **Flutter Unit & Widget Tests** | `flutter test` | **164 tests passed** (0 failed) |
+| **Admin CLI Suite** | `cd tools/admin && npm test` | **13 tests passed** (0 failed) |
 | **Projections Builder Suite** | `cd tools/projections && npm test` | **16 tests passed** (0 failed) |
 | **Android APK Debug Build** | `flutter build apk --debug` | **BUILD SUCCESSFUL** (`app-debug.apk`) |
 
 ### Cakupan Kasus Uji Kritis:
-1. **Sistem Login Internal**: Memvalidasi penghapusan registrasi publik, informasi akun lama, dan navigasi arsip lokal pada `test/cloud_auth_cutover_test.dart`.
-2. **Isolasi Privasi Manager**: Memverifikasi alur navigasi dari daftar PT hingga absensi read-only klien tanpa mengekspos data medis, catatan rahasia, maupun tanda tangan pada `test/manager_quarterly_target_and_privacy_test.dart` dan `test/manager_firestore_read_model_test.dart`.
-3. **Kalkulasi Kuota & Paket**: Formula pemotongan kuota, deduplikasi pemotongan sesi ganda, dan validasi 4 paket resmi pada `test/regression_lifecycle_quota_signatures_test.dart`.
-4. **Rescheduling & Pembatalan Sesi**: Pengembalian kuota dan slot penjadwalan saat sesi dibatalkan pada `test/pt_features_and_signature_flow_test.dart`.
-5. **Keamanan Backend Firestore**: Evaluasi 59 skenario akses RBAC (Role-Based Access Control) di `rules-test/firestore.test.cjs`.
+1. **Transaksi Potong Sesi & Idempotensi**: Menguji eksekusi atomik pemotongan kuota, deduplikasi pemotongan ulang, dan serialisasi tanda tangan tanpa nested array pada `test/session_completion_transaction_test.dart`.
+2. **Modal Tanda Tangan Responsif**: Validasi layout scrollable, isolasi sentuhan kanvas tanda tangan, dan pencegahan RenderFlex overflow pada `test/dedicated_signature_dialog_test.dart`.
+3. **Isolasi Privasi & Navigasi Manager**: Memverifikasi AppShell tanpa navbar Trainer, halaman profil terisolasi Manager, dan akses absensi read-only tanpa kebocoran data sensitif pada `test/manager_navigation_profile_test.dart` dan `test/manager_quarterly_target_and_privacy_test.dart`.
+4. **InitialAvatar & Reaktivitas Profil**: Validasi fallback inisial huruf kapital nama/email, palet warna deterministik, dan responsivitas terhadap perubahan data pada `test/initial_avatar_test.dart`.
+5. **Keamanan Backend Firestore**: Evaluasi 68 skenario akses RBAC (Role-Based Access Control) dan transaksi kuota di `rules-test/firestore.test.cjs`.
 
 ---
 

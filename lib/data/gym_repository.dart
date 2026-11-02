@@ -279,10 +279,22 @@ class SqliteGymRepository implements GymRepository {
 
   @override
   Future<String> getClientLifecycleStatus(int clientId) async {
-    final pkg = await currentPackage(clientId);
-    if (pkg == null) return 'completed';
+    final client = await getClient(clientId);
+    if (client == null) return 'unknown';
+    final pkg = await latestPackage(clientId);
+    if (pkg == null) return 'no_package';
     if (pkg.status == 'cancelled') return 'cancelled';
-    if (pkg.status == 'closed') return 'completed';
+    if (pkg.status == 'inactive') return 'inactive';
+    final completed = await completedCount(pkg.id);
+    if (pkg.status == 'closed') {
+      if (completed < pkg.totalSessions) {
+        return 'discontinued';
+      }
+      return 'completed';
+    }
+    if (completed >= pkg.totalSessions) {
+      return 'completed';
+    }
     return 'active';
   }
 
@@ -859,17 +871,23 @@ class FirestoreGymRepository implements GymRepository {
     if (!clientSnap.exists || clientSnap.data() == null) return 'unknown';
     final clientData = clientSnap.data()!;
     final clientDocStatus = clientData['status'] as String? ?? 'active';
-    if (clientDocStatus == 'cancelled' || clientDocStatus == 'inactive') {
-      return 'cancelled';
-    }
+    if (clientDocStatus == 'inactive') return 'inactive';
+    if (clientDocStatus == 'cancelled') return 'cancelled';
 
     final pkg = await latestPackage(clientId);
     if (pkg == null) return 'no_package';
     if (pkg.status == 'cancelled') return 'cancelled';
-    if (pkg.status == 'closed') return 'completed';
+    if (pkg.status == 'inactive') return 'inactive';
 
     final sList = await packageSessions(pkg.id);
     final completed = sList.where((s) => s.status == 'completed').length;
+    if (pkg.status == 'closed') {
+      if (completed < pkg.totalSessions) {
+        return 'discontinued';
+      }
+      return 'completed';
+    }
+
     if (completed >= pkg.totalSessions) {
       return 'completed';
     }
@@ -1187,6 +1205,19 @@ class FirestoreGymRepository implements GymRepository {
     );
   }
 
+  void _logSafeFirebaseException(String operation, Object error) {
+    if (error is FirebaseException) {
+      // Log sanitized diagnostics; never emit private payload (strokes, medical notes, client details)
+      // ignore: avoid_print
+      print(
+        '[FirestoreSafeLog] $operation failed: plugin=${error.plugin}, code=${error.code}, message=${error.message}',
+      );
+    } else {
+      // ignore: avoid_print
+      print('[FirestoreSafeLog] $operation failed: ${error.runtimeType}');
+    }
+  }
+
   @override
   Future<bool> completeSession(
     int sessionId,
@@ -1207,88 +1238,129 @@ class FirestoreGymRepository implements GymRepository {
         .collection('sessions')
         .doc(sessionDocId);
 
-    // Legacy sessions lack packageDocId. Resolve outside the transaction:
-    // Firestore transactions cannot query for a package by its legacy ID.
+    // Initial check outside transaction
     final initial = await sessionDocRef.get();
     final initialData = initial.data();
     if (initialData == null) return false;
+
+    // Idempotent completion: prevent double deduction if already completed
+    final currentStatus = initialData['status'] as String? ?? 'scheduled';
+    if (currentStatus != 'scheduled') {
+      return false;
+    }
+
     final legacyPackageId = (initialData['packageIntId'] as num?)?.toInt();
     final resolvedPackage = legacyPackageId == null
         ? null
         : await _resolvePackage(legacyPackageId);
 
+    // Firestore-compatible validated signature structure:
+    // Format: Array of maps with points: [{points: [{x, y}]}]
+    // Absolutely NO nested arrays (unsupported by Firestore).
     final clientStrokesJson = clientStrokes == null
-        ? []
+        ? <Map<String, dynamic>>[]
         : clientStrokes
-            .map((s) => s.map((p) => {'x': p.dx, 'y': p.dy}).toList())
+            .where((stroke) => stroke.isNotEmpty)
+            .map(
+              (stroke) => <String, dynamic>{
+                'points': stroke
+                    .where((p) => p.dx.isFinite && p.dy.isFinite)
+                    .map((p) => <String, dynamic>{'x': p.dx, 'y': p.dy})
+                    .toList(),
+              },
+            )
+            .where((m) => (m['points'] as List).isNotEmpty)
             .toList();
 
     final coachStrokesJson = coachStrokes == null
-        ? []
+        ? <Map<String, dynamic>>[]
         : coachStrokes
-            .map((s) => s.map((p) => {'x': p.dx, 'y': p.dy}).toList())
+            .where((stroke) => stroke.isNotEmpty)
+            .map(
+              (stroke) => <String, dynamic>{
+                'points': stroke
+                    .where((p) => p.dx.isFinite && p.dy.isFinite)
+                    .map((p) => <String, dynamic>{'x': p.dx, 'y': p.dy})
+                    .toList(),
+              },
+            )
+            .where((m) => (m['points'] as List).isNotEmpty)
             .toList();
 
-    return firestore.runTransaction<bool>((tx) async {
-      final sessionSnap = await tx.get(sessionDocRef);
-      if (!sessionSnap.exists || sessionSnap.data() == null) return false;
+    try {
+      return await firestore.runTransaction<bool>((tx) async {
+        final sessionSnap = await tx.get(sessionDocRef);
+        if (!sessionSnap.exists || sessionSnap.data() == null) return false;
 
-      final data = sessionSnap.data()!;
-      final currentStatus = data['status'] as String? ?? 'scheduled';
-      if (currentStatus != 'scheduled') {
-        return false;
-      }
+        final data = sessionSnap.data()!;
+        final txStatus = data['status'] as String? ?? 'scheduled';
+        if (txStatus != 'scheduled') {
+          return false;
+        }
 
-      final packageIntId = (data['packageIntId'] as num?)?.toInt();
-      final packageDocId =
-          data['packageDocId'] as String? ??
-          (packageIntId == null ? null : resolvedPackage?.packageDocId);
-      if (packageDocId == null) return false;
+        final packageIntId = (data['packageIntId'] as num?)?.toInt();
+        final packageDocId =
+            data['packageDocId'] as String? ??
+            (packageIntId == null ? null : resolvedPackage?.packageDocId);
+        if (packageDocId == null) return false;
 
-      final pkgDocRef = firestore
-          .collection('clients')
-          .doc(clientDocId)
-          .collection('packages')
-          .doc(packageDocId);
-      final pkgSnap = await tx.get(pkgDocRef);
-      final pkgData = pkgSnap.data();
-      if (!pkgSnap.exists || pkgData == null || pkgData['status'] != 'active') {
-        return false;
-      }
-      final maxSessions = (pkgData['totalSessions'] as num?)?.toInt() ?? 0;
-      final currentCompleted =
-          (pkgData['completedCount'] as num?)?.toInt() ?? 0;
-      if (currentCompleted >= maxSessions) return false;
+        final pkgDocRef = firestore
+            .collection('clients')
+            .doc(clientDocId)
+            .collection('packages')
+            .doc(packageDocId);
+        final pkgSnap = await tx.get(pkgDocRef);
+        final pkgData = pkgSnap.data();
+        if (!pkgSnap.exists ||
+            pkgData == null ||
+            pkgData['status'] != 'active') {
+          return false;
+        }
+        final maxSessions = (pkgData['totalSessions'] as num?)?.toInt() ?? 0;
+        final currentCompleted =
+            (pkgData['completedCount'] as num?)?.toInt() ?? 0;
+        if (currentCompleted >= maxSessions) return false;
 
-      final newCompleted = currentCompleted + 1;
-      final isLastSession = newCompleted >= maxSessions;
+        final newCompleted = currentCompleted + 1;
+        final isLastSession = newCompleted >= maxSessions;
 
-      tx.update(pkgDocRef, {
-        'completedCount': newCompleted,
-        if (isLastSession) 'status': 'closed',
-        if (isLastSession) 'closedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+        tx.update(pkgDocRef, {
+          'completedCount': newCompleted,
+          'lastCompletedSessionId': sessionDocId,
+          if (isLastSession) 'status': 'closed',
+          if (isLastSession) 'closedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        tx.update(sessionDocRef, {
+          'status': 'completed',
+          'completedAt': FieldValue.serverTimestamp(),
+          'notes': notes,
+          'packageDocId': packageDocId,
+          'clientSignatureStatus': 'verified',
+          'coachSignatureStatus': 'verified',
+          'clientSignatureStrokes': clientStrokesJson,
+          'coachSignatureStrokes': coachStrokesJson,
+          'clientName': ?clientName,
+          'trainerName': ?trainerName,
+        });
+
+        return true;
       });
+    } catch (e) {
+      // Server reconciliation on uncertain failure (e.g. deadline exceeded or socket abort)
+      try {
+        final serverDoc = await sessionDocRef.get(
+          const GetOptions(source: Source.server),
+        );
+        if (serverDoc.exists && serverDoc.data()?['status'] == 'completed') {
+          return true;
+        }
+      } catch (_) {}
 
-      // Backfill only legacy records, preserving an existing immutable ref.
-      if (data['packageDocId'] == null) {
-        tx.update(sessionDocRef, {'packageDocId': packageDocId});
-      }
-
-      tx.update(sessionDocRef, {
-        'status': 'completed',
-        'completedAt': FieldValue.serverTimestamp(),
-        'notes': notes,
-        'clientSignatureStatus': 'verified',
-        'coachSignatureStatus': 'verified',
-        'clientSignatureStrokes': clientStrokesJson,
-        'coachSignatureStrokes': coachStrokesJson,
-        'clientName': ?clientName,
-        'trainerName': ?trainerName,
-      });
-
-      return true;
-    });
+      _logSafeFirebaseException('completeSession', e);
+      return false;
+    }
   }
 
   @override
@@ -1302,7 +1374,34 @@ class FirestoreGymRepository implements GymRepository {
         .doc(resolved.sessionDocId)
         .get();
     if (!doc.exists || doc.data() == null) return null;
-    return doc.data();
+    final data = Map<String, dynamic>.from(doc.data()!);
+
+    dynamic unpackStrokes(dynamic raw) {
+      if (raw is List) {
+        return raw.map((item) {
+          if (item is Map &&
+              item.containsKey('points') &&
+              item['points'] is List) {
+            return item['points'];
+          }
+          return item;
+        }).toList();
+      }
+      return raw;
+    }
+
+    if (data.containsKey('clientSignatureStrokes')) {
+      data['clientSignatureStrokes'] = unpackStrokes(
+        data['clientSignatureStrokes'],
+      );
+    }
+    if (data.containsKey('coachSignatureStrokes')) {
+      data['coachSignatureStrokes'] = unpackStrokes(
+        data['coachSignatureStrokes'],
+      );
+    }
+
+    return data;
   }
 
   @override

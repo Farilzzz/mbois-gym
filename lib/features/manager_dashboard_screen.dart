@@ -3,8 +3,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../data/app_database.dart';
+import '../widgets/initial_avatar.dart';
 import '../app.dart' show databaseProvider;
 
 /// Model for client attendance record in Manager read-only view.
@@ -97,10 +99,14 @@ class ManagerDashboardData {
     required this.totalSales,
     required this.monthlySales,
     required this.trainers,
+    this.projectionPending = false,
   });
 
+  final bool projectionPending;
+
   const ManagerDashboardData.empty()
-    : totalActivePt = 0,
+    : projectionPending = false,
+      totalActivePt = 0,
       totalActiveClients = 0,
       totalPackagesSold = 0,
       totalSales = 0.0,
@@ -380,7 +386,28 @@ class FirestoreManagerDashboardRepository
         .collection('manager_dashboard')
         .doc(periodId(year, quarter));
     final summary = await period.get();
-    if (!summary.exists) return const ManagerDashboardData.empty();
+    if (!summary.exists) {
+      int activePtCount = 0;
+      try {
+        final profiles = await firestore
+            .collection('users')
+            .where('role', isEqualTo: 'trainer')
+            .where('status', isEqualTo: 'active')
+            .get();
+        activePtCount = profiles.docs.length;
+      } catch (_) {
+        // Safe roster query fallback
+      }
+      return ManagerDashboardData(
+        totalActivePt: activePtCount,
+        totalActiveClients: 0,
+        totalPackagesSold: 0,
+        totalSales: 0.0,
+        monthlySales: const [0.0, 0.0, 0.0],
+        trainers: const [],
+        projectionPending: true,
+      );
+    }
     final dashboard = summary.data()!;
     final trainerSnapshots = await period.collection('trainers').get();
     final trainers = <TrainerPerformance>[];
@@ -439,8 +466,13 @@ class FirestoreManagerDashboardRepository
       );
     }
 
+    int activePtCount = _int(dashboard['totalActivePt']);
+    if (activePtCount == 0 && trainers.isNotEmpty) {
+      activePtCount = trainers.where((t) => t.status == 'active').length;
+    }
+
     return ManagerDashboardData(
-      totalActivePt: _int(dashboard['totalActivePt']),
+      totalActivePt: activePtCount,
       totalActiveClients: _int(dashboard['totalActiveClients']),
       totalPackagesSold: _int(dashboard['totalPackagesSold']),
       totalSales: _double(dashboard['totalSales']),
@@ -613,6 +645,13 @@ class _ManagerDashboardScreenState
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF0F172A),
         elevation: 0.5,
+        actions: [
+          IconButton(
+            tooltip: 'Profil & Pengaturan',
+            icon: const Icon(Icons.person_outline),
+            onPressed: () => context.go('/settings'),
+          ),
+        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
@@ -635,13 +674,17 @@ class _ManagerDashboardScreenState
                 else if (_errorMessage != null)
                   _buildErrorState()
                 else ...[
+                  if (_dashboardData!.projectionPending)
+                    _buildProjectionPending(_dashboardData!.totalActivePt),
                   _buildKpiCards(_dashboardData!),
                   const SizedBox(height: 16),
-                  _buildTargetCard(_dashboardData!),
-                  const SizedBox(height: 16),
-                  _buildChartCard(_dashboardData!),
-                  const SizedBox(height: 16),
-                  _buildTrainerPerformanceSection(_dashboardData!),
+                  if (!_dashboardData!.projectionPending) ...[
+                    _buildTargetCard(_dashboardData!),
+                    const SizedBox(height: 16),
+                    _buildChartCard(_dashboardData!),
+                    const SizedBox(height: 16),
+                    _buildTrainerPerformanceSection(_dashboardData!),
+                  ],
                 ],
               ],
             ),
@@ -747,6 +790,76 @@ class _ManagerDashboardScreenState
     );
   }
 
+  Widget _buildProjectionPending(int activePt) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF59E0B), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Color(0xFFD97706),
+                size: 24,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Proyeksi Dashboard Belum Tersedia',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF92400E),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Tercatat $activePt Personal Trainer aktif di sistem. Data agregat penjualan, capaian target, dan rincian klien untuk periode Q$_selectedQuarter $_selectedYear belum disinkronkan oleh Admin ke read-model terisolasi.',
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF78350F),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Peringatan: Nilai di bawah menunjukkan status pending sinkronisasi dan bukan nol penjualan riil. Tidak ada data dummy yang digunakan.',
+            style: TextStyle(
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+              color: Color(0xFFB45309),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: _loadData,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Periksa Ulang'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF92400E),
+                side: const BorderSide(color: Color(0xFFD97706)),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildKpiCards(ManagerDashboardData data) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -764,14 +877,14 @@ class _ManagerDashboardScreenState
             ),
             _buildKpiCard(
               title: 'Total Klien Aktif',
-              value: '${data.totalActiveClients}',
+              value: data.projectionPending ? 'Menunggu sinkronisasi' : '${data.totalActiveClients}',
               icon: Icons.people_alt_outlined,
               iconColor: const Color(0xFF0F8780),
               width: cardWidth,
             ),
             _buildKpiCard(
               title: 'Paket PT Terjual',
-              value: '${data.totalPackagesSold}',
+              value: data.projectionPending ? 'Menunggu sinkronisasi' : '${data.totalPackagesSold}',
               icon: Icons.inventory_2_outlined,
               iconColor: const Color(0xFFF59E0B),
               width: cardWidth,
@@ -779,7 +892,7 @@ class _ManagerDashboardScreenState
             _buildKpiCard(
               title: 'Total Penjualan',
               subtitle: 'Nilai Paket Terjual',
-              value: formatRupiah(data.totalSales),
+              value: data.projectionPending ? 'Menunggu sinkronisasi' : formatRupiah(data.totalSales),
               icon: Icons.payments_outlined,
               iconColor: const Color(0xFF10B981),
               width: cardWidth,
@@ -1145,27 +1258,11 @@ class _ManagerDashboardScreenState
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            CircleAvatar(
+                            InitialAvatar(
+                              name: pt.name,
                               radius: 20,
                               backgroundColor: const Color(0xFFD4ECFF),
-                              backgroundImage:
-                                  pt.photoUrl != null && pt.photoUrl!.isNotEmpty
-                                  ? NetworkImage(pt.photoUrl!)
-                                  : null,
-                              child:
-                                  (pt.photoUrl == null || pt.photoUrl!.isEmpty)
-                                  ? Text(
-                                      pt.name.isNotEmpty
-                                          ? pt.name
-                                                .substring(0, 1)
-                                                .toUpperCase()
-                                          : 'P',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF0088FF),
-                                      ),
-                                    )
-                                  : null,
+                              foregroundColor: const Color(0xFF0088FF),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -1396,25 +1493,11 @@ class _ManagerDashboardScreenState
                     ),
                     child: Row(
                       children: [
-                        CircleAvatar(
+                        InitialAvatar(
+                          name: pt.name,
                           radius: 24,
                           backgroundColor: const Color(0xFFD4ECFF),
-                          backgroundImage:
-                              pt.photoUrl != null && pt.photoUrl!.isNotEmpty
-                              ? NetworkImage(pt.photoUrl!)
-                              : null,
-                          child: (pt.photoUrl == null || pt.photoUrl!.isEmpty)
-                              ? Text(
-                                  pt.name.isNotEmpty
-                                      ? pt.name.substring(0, 1).toUpperCase()
-                                      : 'P',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    color: Color(0xFF0088FF),
-                                  ),
-                                )
-                              : null,
+                          foregroundColor: const Color(0xFF0088FF),
                         ),
                         const SizedBox(width: 12),
                         Expanded(

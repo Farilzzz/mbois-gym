@@ -22,6 +22,7 @@ import 'cloud/firebase_cloud_gateway.dart';
 import 'design_system/app_design_system.dart';
 import 'features/screens.dart';
 import 'features/manager_dashboard_screen.dart';
+import 'features/manager_profile_screen.dart';
 
 final databaseProvider = Provider<AppDatabase>(
   (ref) => throw UnimplementedError(),
@@ -210,18 +211,26 @@ class CloudAuthController extends AsyncNotifier<CloudProfile?> {
     if (displayName.trim().isEmpty) return 'Nama tidak boleh kosong.';
     try {
       final gateway = await ref.read(cloudGatewayProvider.future);
+      final isManager = current.isManager;
       await gateway.updateProfile(
         uid: current.uid,
         displayName: displayName.trim(),
-        phone: phone.trim(),
-        heightCm: heightCm,
-        weightKg: weightKg,
-        specialization: specialization,
-        experienceYears: experienceYears,
-        certifications: certifications,
-        bio: bio,
-        photoUrl: photoUrl,
+        phone: isManager ? current.phone : phone.trim(),
+        heightCm: isManager ? current.heightCm : heightCm,
+        weightKg: isManager ? current.weightKg : weightKg,
+        specialization: isManager ? current.specialization : specialization,
+        experienceYears: isManager ? current.experienceYears : experienceYears,
+        certifications: isManager ? current.certifications : certifications,
+        bio: isManager ? current.bio : bio,
+        photoUrl: isManager ? current.photoUrl : photoUrl,
       );
+      heightCm = isManager ? current.heightCm : heightCm;
+      weightKg = isManager ? current.weightKg : weightKg;
+      specialization = isManager ? current.specialization : specialization;
+      experienceYears = isManager ? current.experienceYears : experienceYears;
+      certifications = isManager ? current.certifications : certifications;
+      bio = isManager ? current.bio : bio;
+      photoUrl = isManager ? current.photoUrl : photoUrl;
       final updated = CloudProfile(
         current.uid,
         displayName.trim(),
@@ -284,9 +293,13 @@ GoRouter _createRouter(Ref ref, Listenable refresh) => GoRouter(
     if (!loggedIn && !isAllowedSignedOut) {
       return '/login';
     }
+    final manager = cloudAuth.value?.isManager == true;
     if (loggedIn &&
         {'/login', '/splash'}.contains(state.matchedLocation)) {
       return '/dashboard';
+    }
+    if (manager && state.matchedLocation.startsWith('/clients')) {
+      return '/manager-dashboard';
     }
     return null;
   },
@@ -318,7 +331,15 @@ GoRouter _createRouter(Ref ref, Listenable refresh) => GoRouter(
         ),
         GoRoute(
           path: '/settings',
-          builder: (context, state) => const ProfileScreen(),
+          builder: (context, state) => Consumer(
+            builder: (context, ref, _) {
+              final cloudProfile = ref.watch(cloudAuthProvider).value;
+              if (cloudProfile != null && cloudProfile.isManager) {
+                return const ManagerProfileScreen();
+              }
+              return const ProfileScreen();
+            },
+          ),
         ),
       ],
     ),
@@ -572,11 +593,15 @@ class _RiverpodRefresh extends ChangeNotifier {
   }
 }
 
-class AppShell extends StatelessWidget {
+class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.child});
   final Widget child;
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cloudProfile = ref.watch(cloudAuthProvider).value;
+    if (cloudProfile != null && cloudProfile.isManager) {
+      return Scaffold(body: child);
+    }
     final path = GoRouterState.of(context).uri.path;
     final index = path.startsWith('/clients')
         ? 1

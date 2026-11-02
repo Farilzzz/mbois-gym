@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseArgs } = require('../admin.cjs');
+const { parseArgs, runCli } = require('../admin.cjs');
 const { AdminService } = require('../lib/admin_service.cjs');
 
 test('requires explicit exact project and validates command before SDK initialization', async () => {
@@ -480,6 +480,47 @@ test('runCli: executes end-to-end CLI commands with injected service double', as
     '--uid', createResult.uid,
   ], service);
   assert.equal(postDisableStatus.canAccess, false);
+});
+
+test('CLI: parses sync-projections args and runs projection hook', async () => {
+  const parsed = parseArgs(['sync-projections', '--project', 'mbois-gym', '--year', '2026', '--quarter', '2', '--apply']);
+  assert.equal(parsed.command, 'sync-projections');
+  assert.equal(parsed.project, 'mbois-gym');
+  assert.equal(parsed.year, 2026);
+  assert.equal(parsed.quarter, 2);
+  assert.equal(parsed.apply, true);
+  assert.equal(parsed.dryRun, false);
+
+  // Test alias
+  const aliasParsed = parseArgs(['projection-sync', '--project', 'mbois-gym', '--dry-run']);
+  assert.equal(aliasParsed.command, 'sync-projections');
+  assert.equal(aliasParsed.dryRun, true);
+
+  // Test invalid quarter
+  assert.throws(() => parseArgs(['sync-projections', '--project', 'mbois-gym', '--quarter', '5']), /kuartal/i);
+
+  // Test execution via runCli hook with mock service
+  let hookCalledWith = null;
+  const mockService = {
+    async syncProjections(opts) {
+      hookCalledWith = opts;
+      return { success: true, periodId: '2026-Q2', dryRun: false };
+    },
+  };
+
+  const result = await runCli([
+    'sync-projections',
+    '--project', 'mbois-gym',
+    '--year', '2026',
+    '--quarter', '2',
+    '--apply',
+  ], mockService);
+
+  assert.equal(result.success, true);
+  assert.equal(result.periodId, '2026-Q2');
+  assert.equal(hookCalledWith.year, 2026);
+  assert.equal(hookCalledWith.quarter, 2);
+  assert.equal(hookCalledWith.apply, true);
 });
 
 
