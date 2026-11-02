@@ -263,4 +263,60 @@ describe('Manager Dashboard Projection Computation', () => {
       );
     }
   });
+
+  test('excludes cancelled client registrations and their sales from operational metrics', () => {
+    const sourceData = {
+      users: [
+        { id: 'pt-1', displayName: 'Coach Faril', role: 'trainer', status: 'active' },
+        { id: 'pt-2', displayName: 'PT', name: 'Coach Akbar', role: 'trainer', status: 'active' },
+      ],
+      packageSales: [
+        { id: 'sale-valid', trainerId: 'pt-1', clientId: 'c-active', price: 1000000, timestamp: '2026-10-15T10:00:00Z', status: 'valid' },
+        { id: 'sale-cancelled-client', trainerId: 'pt-1', clientId: 'c-cancelled', price: 500000, timestamp: '2026-10-16T10:00:00Z', status: 'valid' },
+        { id: 'sale-voided', trainerId: 'pt-2', clientId: 'c-active', price: 500000, timestamp: '2026-10-17T10:00:00Z', status: 'cancelled' },
+      ],
+      clients: [
+        {
+          id: 'c-active',
+          name: 'Rian Pratama',
+          assignedTrainerIds: ['pt-1'],
+          status: 'active',
+          packages: [
+            { id: 'pkg-active', tierName: 'Paket 10 Sesi', totalSessions: 10, completedCount: 2, status: 'active' },
+          ],
+          sessions: [],
+        },
+        {
+          id: 'c-cancelled',
+          name: 'Dimas Test',
+          assignedTrainerIds: ['pt-1'],
+          packages: [
+            { id: 'pkg-closed', tierName: 'Paket 4 Sesi', totalSessions: 4, completedCount: 0, status: 'closed' },
+          ],
+          sessions: [],
+        },
+      ],
+    };
+
+    const projection = buildManagerDashboardProjection(sourceData, {
+      year: 2026,
+      quarter: 4,
+    });
+
+    assert.equal(projection.dashboard.totalActivePt, 2);
+    assert.equal(projection.dashboard.totalActiveClients, 1, 'Only active client c-active should be counted');
+    assert.equal(projection.dashboard.totalPackagesSold, 1, 'Only sale-valid should be counted');
+    assert.equal(projection.dashboard.totalSales, 1000000, 'Only sale-valid price should be counted');
+
+    const pt1 = projection.trainers.find(t => t.id === 'pt-1');
+    assert.equal(pt1.doc.name, 'Coach Faril');
+    assert.equal(pt1.doc.activeClients, 1);
+    assert.equal(pt1.doc.totalSales, 1000000);
+    assert.equal(pt1.clients.length, 1);
+    assert.equal(pt1.clients[0].id, 'c-active');
+
+    const pt2 = projection.trainers.find(t => t.id === 'pt-2');
+    assert.equal(pt2.doc.name, 'Coach Akbar', 'PT name should resolve to Coach Akbar, never literal PT');
+    assert.equal(pt2.doc.totalSales, 0);
+  });
 });

@@ -278,4 +278,58 @@ void main() {
     expect(find.byType(InitialAvatar), findsWidgets);
     expect(find.text('Coach Sarah'), findsOneWidget);
   });
+
+  testWidgets('displays Coach Faril and Coach Akbar with actual zero counts when synced with zero sales', (tester) async {
+    final repo = InMemoryManagerDashboardRepository(
+      initialData: const ManagerDashboardData(
+        totalActivePt: 2,
+        totalActiveClients: 0,
+        totalPackagesSold: 0,
+        totalSales: 0,
+        monthlySales: [0, 0, 0],
+        trainers: [
+          TrainerPerformance(
+            id: 'pt-faril',
+            name: 'Coach Faril',
+            specialization: 'Fat Loss & Hypertrophy',
+            activeClients: 0,
+            packagesSold: 0,
+            totalSales: 0,
+          ),
+          TrainerPerformance(
+            id: 'pt-akbar',
+            name: 'Coach Akbar',
+            specialization: 'Strength & Conditioning',
+            activeClients: 0,
+            packagesSold: 0,
+            totalSales: 0,
+          ),
+        ],
+        projectionPending: false,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ManagerDashboardScreen(repository: repo),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // No warning banner when projection is synced
+    expect(find.text('Proyeksi Dashboard Belum Tersedia'), findsNothing);
+    expect(find.text('Menunggu sinkronisasi'), findsNothing);
+
+    // Displays honest 0 values
+    expect(find.text('0'), findsAtLeastNWidgets(2));
+    expect(find.text('Rp 0'), findsAtLeastNWidgets(1));
+
+    // Displays both trainer names accurately
+    expect(find.text('Coach Faril'), findsOneWidget);
+    expect(find.text('Coach Akbar'), findsOneWidget);
+    expect(find.text('PT'), findsNothing);
+
+    // Avatars display 'C'
+    expect(find.text('C'), findsAtLeastNWidgets(2));
+  });
 }

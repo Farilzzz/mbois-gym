@@ -62,7 +62,7 @@ class AdminService {
         action: 'create',
         email: email.trim(),
         role,
-        displayName: displayName || (role === 'manager' ? 'Gym Manager' : 'PT'),
+        displayName: displayName || (role === 'manager' ? 'Gym Manager' : 'Coach Mbois'),
         phone: phone || '',
         status: 'active',
         note: 'Rencana pembuatan akun baru (Dry Run: tidak ada data yang diubah di Auth atau Firestore).',
@@ -72,7 +72,7 @@ class AdminService {
     // 1. Create Auth user
     const createParams = {
       email: email.trim(),
-      displayName: displayName || (role === 'manager' ? 'Gym Manager' : 'PT'),
+      displayName: displayName || (role === 'manager' ? 'Gym Manager' : 'Coach Mbois'),
     };
     if (phone && phone.trim()) {
       createParams.phoneNumber = phone.trim().startsWith('+') ? phone.trim() : undefined;
@@ -123,7 +123,7 @@ class AdminService {
    * Provision existing user by UID or email (e.g. from Auth export or existing login).
    * Preserves existing custom claims and existing Firestore profile fields.
    */
-  async provisionExistingUser({ uid, email, role, status = 'active', dryRun = false }) {
+  async provisionExistingUser({ uid, email, role, name, displayName, status = 'active', dryRun = false }) {
     if (!['trainer', 'manager'].includes(role)) {
       throw new Error(`Role '${role}' tidak valid. Hanya 'trainer' atau 'manager' yang diizinkan.`);
     }
@@ -148,11 +148,13 @@ class AdminService {
         firestoreDocExists: existingDoc.exists,
         targetRole: role,
         targetStatus: status,
+        targetName: (name || displayName || '').trim() || undefined,
         note: 'Rencana pembaruan akun (Dry Run: tidak ada data yang diubah di Auth atau Firestore).',
       };
     }
 
     let preservedFields = [];
+    let resolvedName = '';
 
     // Transactional Firestore update ensuring profile fields preserved
     await this.firestore.runTransaction(async (transaction) => {
@@ -162,11 +164,19 @@ class AdminService {
 
       const now = this.FieldValue.serverTimestamp ? this.FieldValue.serverTimestamp() : new Date().toISOString();
 
+      const explicitName = (name || displayName || '').trim();
+      resolvedName = explicitName ||
+        (existingData.displayName && existingData.displayName.trim() !== 'PT' ? existingData.displayName.trim() : '') ||
+        (existingData.name && existingData.name.trim() !== 'PT' ? existingData.name.trim() : '') ||
+        (authUser.displayName && authUser.displayName.trim() !== 'PT' ? authUser.displayName.trim() : '') ||
+        (role === 'manager' ? 'Gym Manager' : 'Coach Mbois');
+
       const mergedData = {
         ...existingData,
         uid: targetUid,
         email: authUser.email || existingData.email || '',
-        displayName: existingData.displayName || authUser.displayName || 'PT',
+        displayName: resolvedName,
+        name: resolvedName,
         role,
         status,
         updatedAt: now,
@@ -181,6 +191,13 @@ class AdminService {
 
     // Update custom claims in Auth
     await this.auth.setCustomUserClaims(targetUid, updatedClaims);
+
+    // Keep Auth displayName in sync
+    if (resolvedName && authUser.displayName !== resolvedName) {
+      try {
+        await this.auth.updateUser(targetUid, { displayName: resolvedName });
+      } catch (_) {}
+    }
 
     // If account was disabled and targetStatus is active, enable it in Auth
     if (status === 'active' && authUser.disabled) {

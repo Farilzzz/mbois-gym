@@ -93,15 +93,28 @@ void main() {
     expect(action.hitTestable(), findsOneWidget);
   });
 
-  testWidgets('closed unfinished package is history not completed', (tester) async {
-    final repo = RefusingRepository()..addTestClient(id: 1, name: 'Stopped', lifecycle: 'discontinued', totalSessions: 4, packageStatus: 'closed');
+  testWidgets('cancelled or discontinued client without completed sessions is not shown in operational tabs', (tester) async {
+    final repo = RefusingRepository()
+      ..addTestClient(id: 1, name: 'Stopped', lifecycle: 'discontinued', totalSessions: 4, packageStatus: 'closed')
+      ..addTestClient(id: 2, name: 'Completed Client', lifecycle: 'completed', totalSessions: 4, packageStatus: 'closed', completedSessions: 4);
     await tester.pumpWidget(ProviderScope(overrides: [gymRepositoryProvider.overrideWithValue(repo), cloudAuthProvider.overrideWith(TestAuth.new)], child: const MaterialApp(home: ClientListScreen())));
     await tester.pumpAndSettle();
+
+    // In Tab Aktif: neither discontinued nor completed appears
+    expect(find.text('Stopped'), findsNothing);
+    expect(find.text('Completed Client'), findsNothing);
+
+    // Switch to Tab Selesai
     await tester.tap(find.text('SELESAI'));
     await tester.pumpAndSettle();
-    expect(find.text('Dihentikan'), findsOneWidget);
-    expect(find.text('Sesi: 0 / 4 selesai'), findsOneWidget);
-    expect(find.text('Selesai'), findsNothing);
+
+    // In Tab Selesai: stopped/cancelled does NOT appear, and label Dihentikan does not exist
+    expect(find.text('Stopped'), findsNothing);
+    expect(find.text('Dihentikan'), findsNothing);
+
+    // Truly completed client appears with label 'Selesai'
+    expect(find.text('Completed Client'), findsOneWidget);
+    expect(find.text('Selesai'), findsOneWidget);
   });
 
   testWidgets(

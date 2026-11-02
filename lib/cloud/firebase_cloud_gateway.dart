@@ -22,20 +22,24 @@ class FirebaseCloudGateway implements CloudGateway {
     if (!snapshot.exists || data == null || CloudRole.parse(data['role']) == null) {
       return null;
     }
+    final role = data['role'] as String? ?? 'trainer';
+    final status = data['status'] as String? ?? 'inactive';
+    final rawDisplayName = (data['displayName'] as String?)?.trim();
+    final rawName = (data['name'] as String?)?.trim();
+    final authDisplayName = auth.currentUser?.displayName?.trim();
+
     final displayName =
-        (data['displayName'] as String?)?.trim().isNotEmpty == true
-        ? (data['displayName'] as String).trim()
-        : (data['name'] as String?)?.trim().isNotEmpty == true
-        ? (data['name'] as String).trim()
-        : (auth.currentUser?.displayName?.isNotEmpty == true
-              ? auth.currentUser!.displayName!
-              : 'PT');
+        (rawDisplayName != null && rawDisplayName.isNotEmpty && rawDisplayName != 'PT')
+            ? rawDisplayName
+            : (rawName != null && rawName.isNotEmpty && rawName != 'PT')
+                ? rawName
+                : (authDisplayName != null && authDisplayName.isNotEmpty && authDisplayName != 'PT')
+                    ? authDisplayName
+                    : (role == 'manager' ? 'Gym Manager' : 'Coach Mbois');
     final email = (data['email'] as String?)?.trim().isNotEmpty == true
         ? (data['email'] as String).trim()
         : (auth.currentUser?.email ?? '');
     final phone = (data['phone'] as String?)?.trim() ?? '';
-    final role = data['role'] as String? ?? 'trainer';
-    final status = data['status'] as String? ?? 'inactive';
     final heightCm = (data['heightCm'] as num?)?.toDouble();
     final weightKg = (data['weightKg'] as num?)?.toDouble();
     final specialization = data['specialization'] as String? ?? '';
@@ -75,8 +79,10 @@ class FirebaseCloudGateway implements CloudGateway {
     String? bio,
     String? photoUrl,
   }) async {
+    final cleanName = displayName.trim();
     await firestore.collection('users').doc(uid).update({
-      'displayName': displayName.trim(),
+      'displayName': cleanName,
+      'name': cleanName,
       'phone': phone.trim(),
       'heightCm': ?heightCm,
       'weightKg': ?weightKg,
@@ -86,6 +92,11 @@ class FirebaseCloudGateway implements CloudGateway {
       'bio': ?bio,
       'photoUrl': ?photoUrl,
     });
+    try {
+      if (auth.currentUser != null && auth.currentUser!.uid == uid) {
+        await auth.currentUser!.updateDisplayName(cleanName);
+      }
+    } catch (_) {}
   }
 
   @override

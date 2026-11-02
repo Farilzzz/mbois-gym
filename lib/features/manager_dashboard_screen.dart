@@ -388,6 +388,7 @@ class FirestoreManagerDashboardRepository
     final summary = await period.get();
     if (!summary.exists) {
       int activePtCount = 0;
+      final trainers = <TrainerPerformance>[];
       try {
         final profiles = await firestore
             .collection('users')
@@ -395,6 +396,33 @@ class FirestoreManagerDashboardRepository
             .where('status', isEqualTo: 'active')
             .get();
         activePtCount = profiles.docs.length;
+        for (final doc in profiles.docs) {
+          final d = doc.data();
+          final rawName = (d['displayName'] as String?)?.trim();
+          final altName = (d['name'] as String?)?.trim();
+          final resolvedName =
+              (rawName != null && rawName.isNotEmpty && rawName != 'PT')
+                  ? rawName
+                  : (altName != null && altName.isNotEmpty && altName != 'PT')
+                      ? altName
+                      : 'Coach Mbois';
+          trainers.add(
+            TrainerPerformance(
+              id: doc.id,
+              name: resolvedName,
+              specialization:
+                  d['specialization'] as String? ?? 'Personal Trainer',
+              activeClients: 0,
+              packagesSold: 0,
+              totalSales: 0.0,
+              photoUrl: d['photoUrl'] as String?,
+              status: d['status'] as String? ?? 'active',
+              quarterlyTarget: 5000000.0,
+              monthlySales: const [0.0, 0.0, 0.0],
+              clients: const [],
+            ),
+          );
+        }
       } catch (_) {
         // Safe roster query fallback
       }
@@ -404,7 +432,7 @@ class FirestoreManagerDashboardRepository
         totalPackagesSold: 0,
         totalSales: 0.0,
         monthlySales: const [0.0, 0.0, 0.0],
-        trainers: const [],
+        trainers: trainers,
         projectionPending: true,
       );
     }
@@ -446,10 +474,18 @@ class FirestoreManagerDashboardRepository
           ),
         );
       }
+      final rawName = (trainer['displayName'] as String?)?.trim();
+      final altName = (trainer['name'] as String?)?.trim();
+      final resolvedName =
+          (rawName != null && rawName.isNotEmpty && rawName != 'PT')
+              ? rawName
+              : (altName != null && altName.isNotEmpty && altName != 'PT')
+                  ? altName
+                  : 'Coach Mbois';
       trainers.add(
         TrainerPerformance(
           id: trainerSnapshot.id,
-          name: trainer['name'] as String? ?? 'PT',
+          name: resolvedName,
           specialization:
               trainer['specialization'] as String? ?? 'Personal Trainer',
           activeClients: _int(trainer['activeClients']),

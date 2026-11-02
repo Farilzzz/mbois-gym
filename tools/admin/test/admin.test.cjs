@@ -300,6 +300,41 @@ test('AdminService: provisionExistingUser preserves existing claims and Firestor
   assert.equal(data.photoUrl, 'https://cdn.example.com/photo.jpg');
 });
 
+test('AdminService: provisionExistingUser with name sets name and displayName, never reverting to PT', async () => {
+  const mock = createMockFirebase();
+  const targetUid = 'trainer-satria-akbar';
+
+  // Seed user with null displayName in Auth and 'PT' in Firestore
+  mock.usersAuth.set(targetUid, {
+    uid: targetUid,
+    email: 'satriaakbar1195@gmail.com',
+    displayName: undefined,
+    disabled: false,
+    customClaims: {},
+  });
+  mock.usersFirestore.set(targetUid, {
+    displayName: 'PT',
+    role: 'trainer',
+    status: 'active',
+  });
+
+  const service = new AdminService({ auth: mock.auth, firestore: mock.firestore });
+
+  await service.provisionExistingUser({
+    uid: targetUid,
+    role: 'trainer',
+    name: 'Coach Akbar',
+  });
+
+  const updatedDoc = await mock.firestore.collection('users').doc(targetUid).get();
+  const data = updatedDoc.data();
+  assert.equal(data.displayName, 'Coach Akbar');
+  assert.equal(data.name, 'Coach Akbar');
+
+  const authUser = await mock.auth.getUser(targetUid);
+  assert.equal(authUser.displayName, 'Coach Akbar');
+});
+
 test('AdminService: provisionExistingUser provisions Firestore document if user existed in Auth export only', async () => {
   const mock = createMockFirebase();
   const targetUid = 'xtGOiCT0JBhSVorhRkFEbkdSUp63';

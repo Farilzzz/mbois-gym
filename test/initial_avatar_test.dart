@@ -80,5 +80,23 @@ void main() {
       expect(find.text('Z'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('correctly displays C for Coach Faril and Coach Akbar', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                InitialAvatar(name: 'Coach Faril'),
+                InitialAvatar(name: 'Coach Akbar'),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      // Both start with C
+      expect(find.text('C'), findsNWidgets(2));
+    });
   });
 }

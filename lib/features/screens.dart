@@ -332,7 +332,10 @@ class DashboardScreen extends ConsumerWidget {
             child: GestureDetector(
               onTap: () => context.go('/settings'),
               child: InitialAvatar(
-                name: cloudProfile?.name ?? 'Coach Mbois',
+                name: (cloudProfile?.name.trim().isNotEmpty == true &&
+                        cloudProfile!.name.trim() != 'PT')
+                    ? cloudProfile.name
+                    : 'Coach Mbois',
                 email: cloudProfile?.email,
                 radius: 19,
                 backgroundColor: AppColors.skyBlueSoft,
@@ -394,11 +397,14 @@ class DashboardScreen extends ConsumerWidget {
           final activeClients = resolved.activeClients;
           final sessions = resolved.sessions;
           final packages = resolved.packages;
+          final cloudName = cloudProfile?.name.trim();
+          final resolvedTrainerName =
+              (cloudName != null && cloudName.isNotEmpty && cloudName != 'PT')
+                  ? cloudName
+                  : 'Coach Mbois';
           final trainer = Trainer(
             id: trainerId,
-            name: (cloudProfile?.name.isNotEmpty ?? false)
-                ? cloudProfile!.name
-                : 'Coach Mbois',
+            name: resolvedTrainerName,
             email: cloudProfile?.email ?? 'coach@mboisgym.com',
             phone: cloudProfile?.phone ?? '',
             passwordSalt: '',
@@ -739,7 +745,8 @@ class _ClientCategoryList extends ConsumerWidget {
           if (activeOnly) {
             return lifecycle == 'active';
           } else {
-            return lifecycle != 'active';
+            // Tab Selesai: strictly completed clients whose full package sessions were finished
+            return lifecycle == 'completed';
           }
         }).toList();
 
@@ -774,19 +781,6 @@ class _ClientCategoryList extends ConsumerWidget {
                 activeOnly && completed >= total;
 
             final (badgeText, badgeColor, badgeTextColor) = () {
-              final norm = lifecycle.toLowerCase().trim();
-              if (norm == 'cancelled') {
-                return ('Dibatalkan', Colors.red.shade100, Colors.red.shade900);
-              }
-              if (norm == 'discontinued') {
-                return ('Dihentikan', Colors.amber.shade100, Colors.amber.shade900);
-              }
-              if (norm == 'inactive') {
-                return ('Nonaktif', Colors.blueGrey.shade100, Colors.blueGrey.shade900);
-              }
-              if (norm == 'no_package') {
-                return ('Tanpa Paket', Colors.grey.shade200, Colors.blueGrey);
-              }
               if (activeOnly) {
                 if (isWaitingEvaluation) {
                   return (
@@ -797,11 +791,7 @@ class _ClientCategoryList extends ConsumerWidget {
                 }
                 return ('Aktif', kMboisMint, kMboisTeal);
               }
-              // Riwayat / Selesai tab:
-              // Fix lifecycle labels (closed 0/4 not completed)
-              if (completed < total) {
-                return ('Dihentikan', Colors.amber.shade100, Colors.amber.shade900);
-              }
+              // Tab Selesai: strictly completed packages
               return ('Selesai', Colors.grey.shade200, Colors.blueGrey);
             }();
 

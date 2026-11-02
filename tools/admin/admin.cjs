@@ -281,6 +281,8 @@ async function runCli(args, serviceOverride = null) {
         uid: parsed.uid,
         email: parsed.email,
         role: parsed.role,
+        name: parsed.name,
+        displayName: parsed.name,
         status: parsed.status || 'active',
         dryRun: parsed.dryRun,
       });

@@ -179,17 +179,37 @@ Terletak di direktori `tools/projections`, tool ini membaca transaksi penjualan 
 
 2. **Simulasi Proyeksi (Dry Run - Tanpa Menulis ke Cloud)**:
    ```bash
-   node cli.cjs --project mbois-gym --year 2026 --quarter 1
+   node cli.cjs --project mbois-gym --year 2026 --quarter 4
    ```
 
 3. **Menerapkan Proyeksi ke Cloud Firestore**:
    ```bash
-   node cli.cjs --project mbois-gym --year 2026 --quarter 1 --apply
+   node cli.cjs --project mbois-gym --year 2026 --quarter 4 --apply
    ```
+   *Catatan Operasional*: Jalankan perintah ini setelah penambahan PT baru, pendaftaran paket klien baru, atau penyelesaian sesi untuk menyinkronkan read-model `manager_dashboard`. Pendaftaran paket yang dibatalkan otomatis dieksklusikan dari metrik penjualan dan hitungan klien aktif.
 
 ---
 
-## 7. Penanganan Potong Sesi & Error Firestore
+## 7. Lifecycle Klien & Pembatalan Paket
+
+Aplikasi Mbois Gym PT Management menerapkan pemisahan tegas pada lifecycle klien:
+1. **Membatalkan Satu Jadwal Latihan**: Status sesi diubah menjadi `cancelled`, slot jadwal dibebaskan, kuota sesi tidak terpotong, dan klien tetap berstatus aktif operasional di Tab Aktif & Home.
+2. **Membatalkan Pendaftaran / Paket Klien**: Paket berstatus `closed`/`cancelled` dengan 0 sesi selesai diklasifikasikan sebagai pendaftaran batal. Klien dieksklusikan sepenuhnya dari Tab Aktif, Tab Selesai, Home, dan pencarian operasional (tanpa label "Diberhentikan"). Penjualan paket terkait otomatis dieksklusikan dari target Manager Dashboard.
+3. **Menyelesaikan Seluruh Sesi Paket**: Setelah seluruh kuota sesi diselesaikan dan ditandatangani (`completedCount == totalSessions`), klien berpindah secara rapi ke Tab Selesai dengan label "Selesai" dan progres kuota penuh.
+
+---
+
+## 8. Resolusi Nama Pengguna & Initial Avatar
+
+Sistem mengutamakan integritas profil pengguna tanpa menimpa data:
+- **Hierarki Sumber Nama**: Firestore `users/{uid}.displayName` (atau `.name`) -> Firebase Auth `displayName` -> Fallback UI aman (`Coach Mbois` / `Gym Manager`).
+- **Eliminasi Default "PT"**: Teks default literal `"PT"` tidak lagi digunakan sebagai nilai tulis otomatis pada provisioning atau profile update. Jika pengguna belum mengisi nama, fallback ditampilkan di UI saja tanpa mengotori basis data.
+- **Initial Avatar**: Avatar inisial mengekstrak huruf kapital pertama dari nama profil (contoh: "Coach Faril" -> `C`, "Coach Akbar" -> `C`, "Faril" -> `F").
+- **Sinkronisasi Edit Profil**: Ketika Coach memperbarui nama via dialog Edit Profil di aplikasi, perubahan langsung tersimpan ke Firestore `displayName` & `name` serta Firebase Auth `displayName`.
+
+---
+
+## 9. Penanganan Potong Sesi & Error Firestore
 
 ### A. Akar Masalah Pemotongan Sesi Lama
 Pada pengujian sebelumnya, kegagalan saat menekan "Verifikasi & Potong Sesi" disebabkan oleh:

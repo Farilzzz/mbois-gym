@@ -180,18 +180,72 @@ function getQuarterInfo(year, quarter, timezone = DEFAULT_TIMEZONE) {
 }
 
 /**
- * Check if a package sale is valid (not cancelled/refunded/void)
+ * Calculate client lifecycle status deterministically
  */
-function isValidSale(sale) {
+function getClientLifecycle(client) {
+  if (!client) return 'unknown';
+  const docStatus = String(client.status || '').toLowerCase().trim();
+  if (docStatus === 'cancelled') return 'cancelled';
+  if (docStatus === 'inactive') return 'inactive';
+
+  const packages = Array.isArray(client.packages) ? client.packages : [];
+  if (packages.length === 0) return 'no_package';
+
+  const activePkg = packages.find(p => p.status === 'active');
+  if (activePkg) {
+    const total = Number(activePkg.totalSessions) || 0;
+    const completed = Number(activePkg.completedCount) || 0;
+    if (completed >= total && total > 0) {
+      return 'completed';
+    }
+    return 'active';
+  }
+
+  const closedPkgs = packages.filter(p => p.status === 'closed');
+  if (closedPkgs.length > 0) {
+    const lastClosed = closedPkgs[closedPkgs.length - 1];
+    const total = Number(lastClosed.totalSessions) || 0;
+    const completed = Number(lastClosed.completedCount) || 0;
+    if (completed >= total && total > 0) {
+      return 'completed';
+    }
+    return 'discontinued';
+  }
+
+  return 'cancelled';
+}
+
+/**
+ * Check if a package sale is valid (not cancelled/refunded/void)
+ * Also excludes sales whose client/package registration was cancelled without completed sessions.
+ */
+function isValidSale(sale, clientsMap = new Map()) {
   if (!sale) return false;
   const status = String(sale.status || 'valid').toLowerCase().trim();
-  return status !== 'cancelled' && status !== 'refunded' && status !== 'void';
+  if (status === 'cancelled' || status === 'refunded' || status === 'void') {
+    return false;
+  }
+
+  const clientId = sale.clientId;
+  if (clientId && clientsMap && clientsMap.has(String(clientId))) {
+    const client = clientsMap.get(String(clientId));
+    const lifecycle = getClientLifecycle(client);
+    if (lifecycle === 'cancelled' || lifecycle === 'discontinued') {
+      const packages = Array.isArray(client.packages) ? client.packages : [];
+      const hasCompleted = packages.some(p => (Number(p.completedCount) || 0) > 0);
+      if (!hasCompleted) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 /**
  * Deduplicate package sales by ID, retaining only valid records
  */
-function deduplicateSales(sales = []) {
+function deduplicateSales(sales = [], clientsMap = new Map()) {
   const seen = new Set();
   const validList = [];
 
@@ -205,7 +259,7 @@ function deduplicateSales(sales = []) {
     }
     seen.add(id);
 
-    if (isValidSale(sale)) {
+    if (isValidSale(sale, clientsMap)) {
       validList.push(sale);
     }
   }
@@ -231,9 +285,13 @@ function buildManagerDashboardProjection(sourceData, options = {}) {
   const allUsers = sourceData.users || [];
   const trainerUsers = allUsers.filter(u => u && u.role === 'trainer');
 
+  // Build client map for cross-referencing sales & lifecycle status
+  const rawClients = sourceData.clients || [];
+  const clientsMap = new Map(rawClients.map(c => [String(c.id), c]));
+
   // 2. Deduplicate and filter package sales for target quarter & year
   const rawSales = sourceData.packageSales || [];
-  const dedupedSales = deduplicateSales(rawSales);
+  const dedupedSales = deduplicateSales(rawSales, clientsMap);
 
   const quarterSales = [];
   for (const sale of dedupedSales) {
@@ -262,7 +320,6 @@ function buildManagerDashboardProjection(sourceData, options = {}) {
   }
 
   // 3. Process clients and attendance with STRICT ALLOWLIST (NO sensitive info)
-  const rawClients = sourceData.clients || [];
   const clientsByTrainer = new Map();
 
   for (const client of rawClients) {
@@ -324,6 +381,13 @@ function buildManagerDashboardProjection(sourceData, options = {}) {
       ? (activePkg.tierName || activePkg.packageName || `Paket ${totalSessions} Sesi`)
       : (totalSessions > 0 ? `Paket ${totalSessions} Sesi` : 'Paket PT');
 
+    const lifecycle = getClientLifecycle(client);
+    const isOperational = lifecycle === 'active' || lifecycle === 'completed';
+    if (!isOperational) {
+      // Exclude cancelled/discontinued clients without completed sessions from operational views
+      continue;
+    }
+
     // CLIENT ALLOWLIST: Only name, packageName, totalSessions, attendedSessions, remainingSessions
     // EXCLUDES: notes, medical, evaluations, workouts, phone, email, address, assessments
     const clientProjectionItem = {
@@ -335,7 +399,7 @@ function buildManagerDashboardProjection(sourceData, options = {}) {
         attendedSessions: attendedSessions,
         remainingSessions: remainingSessions,
       },
-      status: client.status || 'active',
+      status: lifecycle,
       attendance: allowlistedAttendance,
     };
 
@@ -384,10 +448,18 @@ function buildManagerDashboardProjection(sourceData, options = {}) {
       totalActiveClientsSet.add(c.id);
     }
 
+    const rawName = (trainer.displayName && String(trainer.displayName).trim()) || '';
+    const altName = (trainer.name && String(trainer.name).trim()) || '';
+    const trainerName = (rawName && rawName !== 'PT')
+      ? rawName
+      : (altName && altName !== 'PT')
+        ? altName
+        : 'Coach Mbois';
+
     // TRAINER ALLOWLIST
     // EXCLUDES: private phone, email, personal address, bank details
     const trainerDoc = {
-      name: trainer.displayName || trainer.name || 'PT',
+      name: trainerName,
       specialization: trainer.specialization || 'Personal Trainer',
       activeClients: activeTrainerClients.length,
       packagesSold: trainerSales.length,
