@@ -59,7 +59,6 @@ class _OfflineCloudGateway implements CloudGateway {
   @override
   Future<void> signIn(String email, String password) async =>
       throw StateError('Firebase tidak tersedia pada lingkungan ini.');
-      
 
   @override
   Future<void> signOut() async {}
@@ -294,8 +293,7 @@ GoRouter _createRouter(Ref ref, Listenable refresh) => GoRouter(
       return '/login';
     }
     final manager = cloudAuth.value?.isManager == true;
-    if (loggedIn &&
-        {'/login', '/splash'}.contains(state.matchedLocation)) {
+    if (loggedIn && {'/login', '/splash'}.contains(state.matchedLocation)) {
       return '/dashboard';
     }
     if (manager && state.matchedLocation.startsWith('/clients')) {
@@ -599,11 +597,11 @@ class AppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cloudProfile = ref.watch(cloudAuthProvider).value;
-    if (cloudProfile != null && cloudProfile.isManager) {
-      return Scaffold(body: child);
-    }
+    final isManager = cloudProfile?.isManager == true;
     final path = GoRouterState.of(context).uri.path;
-    final index = path.startsWith('/clients')
+    final index = isManager
+        ? (path.startsWith('/settings') ? 1 : 0)
+        : path.startsWith('/clients')
         ? 1
         : path.startsWith('/settings')
         ? 2
@@ -612,7 +610,12 @@ class AppShell extends ConsumerWidget {
       body: child,
       bottomNavigationBar: AppBottomNavigation(
         currentIndex: index,
-        onTap: (i) => context.go(['/dashboard', '/clients', '/settings'][i]),
+        itemCount: isManager ? 2 : 3,
+        onTap: (i) => context.go(
+          isManager
+              ? ['/dashboard', '/settings'][i]
+              : ['/dashboard', '/clients', '/settings'][i],
+        ),
       ),
     );
   }

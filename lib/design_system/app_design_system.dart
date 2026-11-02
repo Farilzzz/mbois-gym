@@ -480,10 +480,12 @@ class AppBottomNavigation extends StatelessWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.itemCount = 3,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final int itemCount;
 
   @override
   Widget build(BuildContext context) {
@@ -507,26 +509,41 @@ class AppBottomNavigation extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(
-                index: 0,
-                label: 'Home',
-                icon: Icons.home_outlined,
-                activeIcon: Icons.home,
-              ),
-              _buildNavItem(
-                index: 1,
-                label: 'client',
-                icon: Icons.badge_outlined,
-                activeIcon: Icons.badge,
-              ),
-              _buildNavItem(
-                index: 2,
-                label: 'Profil',
-                icon: Icons.person_outline,
-                activeIcon: Icons.person,
-              ),
-            ],
+            children: itemCount == 2
+                ? [
+                    _buildNavItem(
+                      index: 0,
+                      label: 'Home',
+                      icon: Icons.home_outlined,
+                      activeIcon: Icons.home,
+                    ),
+                    _buildNavItem(
+                      index: 1,
+                      label: 'Profil',
+                      icon: Icons.person_outline,
+                      activeIcon: Icons.person,
+                    ),
+                  ]
+                : [
+                    _buildNavItem(
+                      index: 0,
+                      label: 'Home',
+                      icon: Icons.home_outlined,
+                      activeIcon: Icons.home,
+                    ),
+                    _buildNavItem(
+                      index: 1,
+                      label: 'client',
+                      icon: Icons.badge_outlined,
+                      activeIcon: Icons.badge,
+                    ),
+                    _buildNavItem(
+                      index: 2,
+                      label: 'Profil',
+                      icon: Icons.person_outline,
+                      activeIcon: Icons.person,
+                    ),
+                  ],
           ),
         ),
       ),

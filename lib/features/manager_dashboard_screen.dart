@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -402,10 +403,10 @@ class FirestoreManagerDashboardRepository
           final altName = (d['name'] as String?)?.trim();
           final resolvedName =
               (rawName != null && rawName.isNotEmpty && rawName != 'PT')
-                  ? rawName
-                  : (altName != null && altName.isNotEmpty && altName != 'PT')
-                      ? altName
-                      : 'Coach Mbois';
+              ? rawName
+              : (altName != null && altName.isNotEmpty && altName != 'PT')
+              ? altName
+              : 'Coach Mbois';
           trainers.add(
             TrainerPerformance(
               id: doc.id,
@@ -478,10 +479,10 @@ class FirestoreManagerDashboardRepository
       final altName = (trainer['name'] as String?)?.trim();
       final resolvedName =
           (rawName != null && rawName.isNotEmpty && rawName != 'PT')
-              ? rawName
-              : (altName != null && altName.isNotEmpty && altName != 'PT')
-                  ? altName
-                  : 'Coach Mbois';
+          ? rawName
+          : (altName != null && altName.isNotEmpty && altName != 'PT')
+          ? altName
+          : 'Coach Mbois';
       trainers.add(
         TrainerPerformance(
           id: trainerSnapshot.id,
@@ -671,58 +672,86 @@ class _ManagerDashboardScreenState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text(
-          'Dashboard Manajemen PT',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF0F172A),
-        elevation: 0.5,
-        actions: [
-          IconButton(
-            tooltip: 'Profil & Pengaturan',
-            icon: const Icon(Icons.person_outline),
-            onPressed: () => context.go('/settings'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final shouldExit = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Konfirmasi Keluar'),
+            content: const Text(
+              'Apakah Anda yakin ingin keluar dari aplikasi?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Batal'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Keluar'),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _loadData,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeaderFilters(),
-                const SizedBox(height: 16),
-                if (_isLoading)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 40),
-                      child: CircularProgressIndicator(),
-                    ),
-                  )
-                else if (_errorMessage != null)
-                  _buildErrorState()
-                else ...[
-                  if (_dashboardData!.projectionPending)
-                    _buildProjectionPending(_dashboardData!.totalActivePt),
-                  _buildKpiCards(_dashboardData!),
+        );
+        if (shouldExit == true) {
+          await SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          title: const Text(
+            'Dashboard Manajemen PT',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF0F172A),
+          elevation: 0.5,
+          actions: [
+            IconButton(
+              tooltip: 'Profil & Pengaturan',
+              icon: const Icon(Icons.person_outline),
+              onPressed: () => context.go('/settings'),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: _loadData,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeaderFilters(),
                   const SizedBox(height: 16),
-                  if (!_dashboardData!.projectionPending) ...[
-                    _buildTargetCard(_dashboardData!),
+                  if (_isLoading)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 40),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else if (_errorMessage != null)
+                    _buildErrorState()
+                  else ...[
+                    if (_dashboardData!.projectionPending)
+                      _buildProjectionPending(_dashboardData!.totalActivePt),
+                    _buildKpiCards(_dashboardData!),
                     const SizedBox(height: 16),
-                    _buildChartCard(_dashboardData!),
-                    const SizedBox(height: 16),
-                    _buildTrainerPerformanceSection(_dashboardData!),
+                    if (!_dashboardData!.projectionPending) ...[
+                      _buildTargetCard(_dashboardData!),
+                      const SizedBox(height: 16),
+                      _buildChartCard(_dashboardData!),
+                      const SizedBox(height: 16),
+                      _buildTrainerPerformanceSection(_dashboardData!),
+                    ],
                   ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -913,14 +942,18 @@ class _ManagerDashboardScreenState
             ),
             _buildKpiCard(
               title: 'Total Klien Aktif',
-              value: data.projectionPending ? 'Menunggu sinkronisasi' : '${data.totalActiveClients}',
+              value: data.projectionPending
+                  ? 'Menunggu sinkronisasi'
+                  : '${data.totalActiveClients}',
               icon: Icons.people_alt_outlined,
               iconColor: const Color(0xFF0F8780),
               width: cardWidth,
             ),
             _buildKpiCard(
               title: 'Paket PT Terjual',
-              value: data.projectionPending ? 'Menunggu sinkronisasi' : '${data.totalPackagesSold}',
+              value: data.projectionPending
+                  ? 'Menunggu sinkronisasi'
+                  : '${data.totalPackagesSold}',
               icon: Icons.inventory_2_outlined,
               iconColor: const Color(0xFFF59E0B),
               width: cardWidth,
@@ -928,7 +961,9 @@ class _ManagerDashboardScreenState
             _buildKpiCard(
               title: 'Total Penjualan',
               subtitle: 'Nilai Paket Terjual',
-              value: data.projectionPending ? 'Menunggu sinkronisasi' : formatRupiah(data.totalSales),
+              value: data.projectionPending
+                  ? 'Menunggu sinkronisasi'
+                  : formatRupiah(data.totalSales),
               icon: Icons.payments_outlined,
               iconColor: const Color(0xFF10B981),
               width: cardWidth,
@@ -1496,294 +1531,296 @@ class _ManagerDashboardScreenState
   }
 
   void _showTrainerDetail(BuildContext context, TrainerPerformance pt) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.85,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.symmetric(vertical: 10),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(2),
+    Navigator.of(context, rootNavigator: true).push<void>(
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          appBar: AppBar(title: Text(pt.name)),
+          body: DraggableScrollableSheet(
+            initialChildSize: 1,
+            minChildSize: 1,
+            maxChildSize: 1,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.symmetric(vertical: 10),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: [
-                        InitialAvatar(
-                          name: pt.name,
-                          radius: 24,
-                          backgroundColor: const Color(0xFFD4ECFF),
-                          foregroundColor: const Color(0xFF0088FF),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                pt.name,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                pt.specialization,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                            ],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        children: [
+                          InitialAvatar(
+                            name: pt.name,
+                            radius: 24,
+                            backgroundColor: const Color(0xFFD4ECFF),
+                            foregroundColor: const Color(0xFF0088FF),
                           ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.of(ctx).pop(),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: ListView(
-                      controller: scrollController,
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        // Target Achievement Card
-                        Card(
-                          elevation: 0,
-                          color: const Color(0xFFF8FAFC),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: const BorderSide(color: Color(0xFFE2E8F0)),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
+                          const SizedBox(width: 12),
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      'Target Penjualan Triwulan',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                        color: Color(0xFF0F172A),
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: pt.isTargetAchieved
-                                            ? const Color(0xFFDCFCE7)
-                                            : const Color(0xFFFEF3C7),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        pt.isTargetAchieved
-                                            ? 'Target Tercapai ✓'
-                                            : 'Belum Tercapai',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: pt.isTargetAchieved
-                                              ? const Color(0xFF166534)
-                                              : const Color(0xFFB45309),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
                                 Text(
-                                  'Nilai Paket Terjual Tercatat: ${formatRupiah(pt.totalSales)}',
+                                  pt.name,
                                   style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF334155),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F172A),
                                   ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Target: ${formatRupiah(pt.quarterlyTarget)} (${pt.achievementPercentage.toStringAsFixed(1)}%)',
+                                  pt.specialization,
                                   style: const TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 13,
                                     color: Color(0xFF64748B),
                                   ),
-                                ),
-                                if (!pt.isTargetAchieved) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Sisa Target: ${formatRupiah(pt.remainingAmount)}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFFF59E0B),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                                const SizedBox(height: 10),
-                                const Text(
-                                  'Rincian Bulanan Triwulan Ini:',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
-                                  children: List.generate(3, (i) {
-                                    final labels = DashboardPeriod(
-                                      year: _selectedYear,
-                                      quarter: _selectedQuarter,
-                                    ).monthLabels;
-                                    final amt = i < pt.monthlySales.length
-                                        ? pt.monthlySales[i]
-                                        : 0.0;
-                                    return Column(
-                                      children: [
-                                        Text(
-                                          labels[i],
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF475569),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          formatRupiah(amt),
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF0F172A),
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  }),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Daftar Klien yang Ditangani',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF0F172A),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.of(ctx).pop(),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        if (pt.clients.isEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 24,
-                              horizontal: 16,
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          // Target Achievement Card
+                          Card(
+                            elevation: 0,
+                            color: const Color(0xFFF8FAFC),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(color: Color(0xFFE2E8F0)),
                             ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Center(
-                              child: Text(
-                                'Belum ada klien yang ditangani oleh PT ini.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                            ),
-                          )
-                        else
-                          ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: pt.clients.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(height: 8),
-                            itemBuilder: (ctx, cIdx) {
-                              final client = pt.clients[cIdx];
-                              return Card(
-                                elevation: 0.5,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                  side: const BorderSide(
-                                    color: Color(0xFFE2E8F0),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        'Target Penjualan Triwulan',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: pt.isTargetAchieved
+                                              ? const Color(0xFFDCFCE7)
+                                              : const Color(0xFFFEF3C7),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          pt.isTargetAchieved
+                                              ? 'Target Tercapai ✓'
+                                              : 'Belum Tercapai',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: pt.isTargetAchieved
+                                                ? const Color(0xFF166534)
+                                                : const Color(0xFFB45309),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                child: ListTile(
-                                  dense: true,
-                                  title: Text(
-                                    client.name,
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    'Nilai Paket Terjual Tercatat: ${formatRupiah(pt.totalSales)}',
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
                                       fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF334155),
                                     ),
                                   ),
-                                  subtitle: Text(
-                                    '${client.packageName} • ${client.attendedSessions} dari ${client.totalSessions} sesi dihadiri',
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Target: ${formatRupiah(pt.quarterlyTarget)} (${pt.achievementPercentage.toStringAsFixed(1)}%)',
                                     style: const TextStyle(
-                                      fontSize: 11,
+                                      fontSize: 12,
                                       color: Color(0xFF64748B),
                                     ),
                                   ),
-                                  trailing: const Icon(
-                                    Icons.chevron_right,
-                                    size: 18,
-                                    color: Color(0xFF0088FF),
+                                  if (!pt.isTargetAchieved) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Sisa Target: ${formatRupiah(pt.remainingAmount)}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFFF59E0B),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 10),
+                                  const Text(
+                                    'Rincian Bulanan Triwulan Ini:',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF64748B),
+                                    ),
                                   ),
-                                  onTap: () => _showClientAttendanceDetail(
-                                    context,
-                                    client,
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: List.generate(3, (i) {
+                                      final labels = DashboardPeriod(
+                                        year: _selectedYear,
+                                        quarter: _selectedQuarter,
+                                      ).monthLabels;
+                                      final amt = i < pt.monthlySales.length
+                                          ? pt.monthlySales[i]
+                                          : 0.0;
+                                      return Column(
+                                        children: [
+                                          Text(
+                                            labels[i],
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF475569),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            formatRupiah(amt),
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Daftar Klien yang Ditangani',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (pt.clients.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 24,
+                                horizontal: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  'Belum ada klien yang ditangani oleh PT ini.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF64748B),
                                   ),
                                 ),
-                              );
-                            },
-                          ),
-                      ],
+                              ),
+                            )
+                          else
+                            ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: pt.clients.length,
+                              separatorBuilder: (context, index) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (ctx, cIdx) {
+                                final client = pt.clients[cIdx];
+                                return Card(
+                                  elevation: 0.5,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    side: const BorderSide(
+                                      color: Color(0xFFE2E8F0),
+                                    ),
+                                  ),
+                                  child: ListTile(
+                                    dense: true,
+                                    title: Text(
+                                      client.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      '${client.packageName} • ${client.attendedSessions} dari ${client.totalSessions} sesi dihadiri',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                    trailing: const Icon(
+                                      Icons.chevron_right,
+                                      size: 18,
+                                      color: Color(0xFF0088FF),
+                                    ),
+                                    onTap: () => _showClientAttendanceDetail(
+                                      context,
+                                      client,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -1791,235 +1828,236 @@ class _ManagerDashboardScreenState
     BuildContext context,
     ManagerClientItem client,
   ) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          scrollable: true,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              const Icon(Icons.event_available, color: Color(0xFF0088FF)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    Navigator.of(context, rootNavigator: true).push<void>(
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          appBar: AppBar(title: const Text('Detail Absensi Klien')),
+          body: SingleChildScrollView(
+            child: Column(
+              children: [
+                Row(
                   children: [
-                    const Text(
-                      'Detail Absensi Klien',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      'Read-Only • ${client.name}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.normal,
+                    const Icon(Icons.event_available, color: Color(0xFF0088FF)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Read-Only • ${client.name}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.normal,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Info Summary Card
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
+                SizedBox(
+                  width: double.maxFinite,
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Paket yang Diikuti:',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                          Text(
-                            client.packageName,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Sesi Dihadiri:',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                          Text(
-                            '${client.attendedSessions} Sesi',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF10B981),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Sesi Belum Dijalani:',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                          Text(
-                            '${client.remainingSessions} Sesi',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0088FF),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'Riwayat Jadwal & Kehadiran Sesi',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (client.attendanceRecords.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    alignment: Alignment.center,
-                    child: const Text(
-                      'Belum ada jadwal sesi tercatat.',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                    ),
-                  )
-                else
-                  ...client.attendanceRecords.map((rec) {
-                    final dtStr =
-                        '${rec.scheduledTime.day.toString().padLeft(2, '0')}/${rec.scheduledTime.month.toString().padLeft(2, '0')}/${rec.scheduledTime.year} • ${rec.scheduledTime.hour.toString().padLeft(2, '0')}:${rec.scheduledTime.minute.toString().padLeft(2, '0')}';
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 12,
-                            backgroundColor: const Color(0xFFF1F5F9),
-                            child: Text(
-                              '${rec.sessionNumber}',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF334155),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      // Info Summary Card
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  'Sesi ${rec.sessionNumber}',
-                                  style: const TextStyle(
+                                const Text(
+                                  'Paket yang Diikuti:',
+                                  style: TextStyle(
                                     fontSize: 12,
-                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF64748B),
                                   ),
                                 ),
                                 Text(
-                                  dtStr,
+                                  client.packageName,
                                   style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Color(0xFF64748B),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F172A),
                                   ),
                                 ),
                               ],
                             ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Sesi Dihadiri:',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                                Text(
+                                  '${client.attendedSessions} Sesi',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF10B981),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Sesi Belum Dijalani:',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                                Text(
+                                  '${client.remainingSessions} Sesi',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0088FF),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      const Text(
+                        'Riwayat Jadwal & Kehadiran Sesi',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (client.attendanceRecords.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'Belum ada jadwal sesi tercatat.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF94A3B8),
+                            ),
                           ),
-                          Container(
+                        )
+                      else
+                        ...client.attendanceRecords.map((rec) {
+                          final dtStr =
+                              '${rec.scheduledTime.day.toString().padLeft(2, '0')}/${rec.scheduledTime.month.toString().padLeft(2, '0')}/${rec.scheduledTime.year} • ${rec.scheduledTime.hour.toString().padLeft(2, '0')}:${rec.scheduledTime.minute.toString().padLeft(2, '0')}';
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 6),
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
+                              horizontal: 10,
+                              vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: rec.statusColor.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              rec.statusLabel,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: rec.statusColor,
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: const Color(0xFFE2E8F0),
                               ),
                             ),
-                          ),
-                        ],
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 12,
+                                  backgroundColor: const Color(0xFFF1F5F9),
+                                  child: Text(
+                                    '${rec.sessionNumber}',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF334155),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Sesi ${rec.sessionNumber}',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        dtStr,
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: rec.statusColor.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    rec.statusLabel,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: rec.statusColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Catatan Privasi: Asesmen kesehatan, catatan latihan rahasia, dan tanda tangan klien tidak ditampilkan.',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                          color: Color(0xFF94A3B8),
+                        ),
                       ),
-                    );
-                  }),
-                const SizedBox(height: 10),
-                const Text(
-                  'Catatan Privasi: Asesmen kesehatan, catatan latihan rahasia, dan tanda tangan klien tidak ditampilkan.',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontStyle: FontStyle.italic,
-                    color: Color(0xFF94A3B8),
+                    ],
                   ),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Tutup'),
                 ),
               ],
             ),
           ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Tutup'),
-            ),
-          ],
-        );
-      },
+        ),
+      ),
     );
   }
 

@@ -80,16 +80,16 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                             if (err != null) {
                               setDialogState(() {
                                 isSaving = false;
-                                localError =
-                                    'Gagal memperbarui nama. Silakan periksa koneksi Anda.';
+                                localError = 'Gagal memperbarui nama. Silakan periksa koneksi Anda.';
                               });
                             } else {
                               Navigator.pop(ctx);
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content:
-                                        Text('Nama profil berhasil diperbarui.'),
+                                    content: Text(
+                                      'Nama profil berhasil diperbarui.',
+                                    ),
                                   ),
                                 );
                               }
@@ -98,8 +98,7 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                             if (!dialogCtx.mounted) return;
                             setDialogState(() {
                               isSaving = false;
-                              localError =
-                                  'Terjadi kesalahan saat menyimpan. Silakan coba lagi.';
+                              localError = 'Terjadi kesalahan saat menyimpan. Silakan coba lagi.';
                             });
                           }
                         },
@@ -122,10 +121,7 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
     );
   }
 
-  Future<void> _confirmResetPassword(
-    BuildContext context,
-    String email,
-  ) async {
+  Future<void> _confirmResetPassword(BuildContext context, String email) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -150,9 +146,8 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
             .read(cloudAuthProvider.notifier)
             .resetPassword(email);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg)),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(msg)));
         }
       } catch (_) {
         if (context.mounted) {
@@ -182,9 +177,7 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
             child: const Text('Batal'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.dangerRed,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.dangerRed),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Keluar'),
           ),
@@ -213,224 +206,230 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final account = ref.watch(cloudAuthProvider);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profil Manager'),
-      ),
-      body: account.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, _) => Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.error_outline,
-                  size: 48,
-                  color: AppColors.dangerRed,
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Gagal memuat profil manager. Silakan periksa koneksi Anda.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => ref.refresh(cloudAuthProvider),
-                  child: const Text('Coba Lagi'),
-                ),
-              ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        context.go('/dashboard');
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Profil Manager')),
+        body: account.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: AppColors.dangerRed,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Gagal memuat profil manager. Silakan periksa koneksi Anda.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => ref.refresh(cloudAuthProvider),
+                    child: const Text('Coba Lagi'),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        data: (profile) {
-          if (profile == null || !profile.isManager) {
-            return const Center(child: Text('Sesi manager tidak tersedia.'));
-          }
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: InitialAvatar(
-                    name: profile.name,
-                    email: profile.email,
-                    radius: 44,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Center(
-                  child: Text(
-                    profile.name,
-                    style: AppTypography.screenHeader,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
+          data: (profile) {
+            if (profile == null || !profile.isManager) {
+              return const Center(child: Text('Sesi manager tidak tersedia.'));
+            }
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: InitialAvatar(
+                      name: profile.name,
+                      email: profile.email,
+                      radius: 44,
                     ),
-                    decoration: BoxDecoration(
-                      color: AppColors.vibrantBlue,
-                      borderRadius: AppRadius.pill,
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Text(
+                      profile.name,
+                      style: AppTypography.screenHeader,
                     ),
-                    child: const Text(
-                      'Manager',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
+                  ),
+                  const SizedBox(height: 6),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.vibrantBlue,
+                        borderRadius: AppRadius.pill,
+                      ),
+                      child: const Text(
+                        'Manager',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                Card(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: AppRadius.medium,
-                  ),
-                  child: Column(
-                    children: [
-                      ListTile(
-                        leading: const Icon(
-                          Icons.person_outline,
-                          color: AppColors.primaryRoyalBlue,
-                        ),
-                        title: const Text(
-                          'Nama Lengkap',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                        subtitle: Text(
-                          profile.name,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        trailing: OutlinedButton.icon(
-                          icon: const Icon(Icons.edit_outlined, size: 16),
-                          label: const Text('Edit Nama'),
-                          onPressed: () => _showEditNameDialog(context, profile),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(
-                          Icons.email_outlined,
-                          color: AppColors.primaryRoyalBlue,
-                        ),
-                        title: const Text(
-                          'Email',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                        subtitle: Text(
-                          profile.email,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      const ListTile(
-                        leading: Icon(
-                          Icons.badge_outlined,
-                          color: AppColors.primaryRoyalBlue,
-                        ),
-                        title: Text(
-                          'Peran Akun',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                        subtitle: Text(
-                          'Manager',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Card(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: AppRadius.medium,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                  const SizedBox(height: 24),
+                  Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: AppRadius.medium,
                     ),
-                    child: Row(
+                    child: Column(
                       children: [
-                        const Icon(
-                          Icons.lock_reset,
-                          color: AppColors.primaryRoyalBlue,
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Kata Sandi',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              Text(
-                                'Kirim tautan reset kata sandi',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textMuted,
-                                ),
-                              ),
-                            ],
+                        ListTile(
+                          leading: const Icon(
+                            Icons.person_outline,
+                            color: AppColors.primaryRoyalBlue,
+                          ),
+                          title: const Text(
+                            'Nama Lengkap',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          subtitle: Text(
+                            profile.name,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          trailing: OutlinedButton.icon(
+                            icon: const Icon(Icons.edit_outlined, size: 16),
+                            label: const Text('Edit Nama'),
+                            onPressed: () =>
+                                _showEditNameDialog(context, profile),
                           ),
                         ),
-                        FilledButton(
-                          onPressed: () =>
-                              _confirmResetPassword(context, profile.email),
-                          child: const Text('Reset Password'),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: const Icon(
+                            Icons.email_outlined,
+                            color: AppColors.primaryRoyalBlue,
+                          ),
+                          title: const Text(
+                            'Email',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          subtitle: Text(
+                            profile.email,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        const ListTile(
+                          leading: Icon(
+                            Icons.badge_outlined,
+                            color: AppColors.primaryRoyalBlue,
+                          ),
+                          title: Text(
+                            'Peran Akun',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Manager',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Keluar dari Akun'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.dangerRed,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(48),
+                  const SizedBox(height: 16),
+                  Card(
                     shape: RoundedRectangleBorder(
                       borderRadius: AppRadius.medium,
                     ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.lock_reset,
+                            color: AppColors.primaryRoyalBlue,
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Kata Sandi',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  'Kirim tautan reset kata sandi',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          FilledButton(
+                            onPressed: () =>
+                                _confirmResetPassword(context, profile.email),
+                            child: const Text('Reset Password'),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  onPressed: () => _confirmLogout(context),
-                ),
-              ],
-            ),
-          );
-        },
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Keluar dari Akun'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.dangerRed,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: AppRadius.medium,
+                      ),
+                    ),
+                    onPressed: () => _confirmLogout(context),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
