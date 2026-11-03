@@ -374,6 +374,87 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                         horizontal: 16,
                         vertical: 12,
                       ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(
+                                Icons.dark_mode_outlined,
+                                color: AppColors.primaryRoyalBlue,
+                              ),
+                              SizedBox(width: 12),
+                              Text(
+                                'Pengaturan Tema Aplikasi',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Builder(
+                            builder: (context) {
+                              final currentTheme =
+                                  ref.watch(themeProvider).value ??
+                                  ThemeMode.system;
+                              return Column(
+                                children: [
+                                  RadioListTile<ThemeMode>(
+                                    title: const Text('Ikuti Sistem (Default)'),
+                                    value: ThemeMode.system,
+                                    groupValue: currentTheme,
+                                    onChanged: (v) {
+                                      if (v != null) {
+                                        ref
+                                            .read(themeProvider.notifier)
+                                            .setMode(v);
+                                      }
+                                    },
+                                  ),
+                                  RadioListTile<ThemeMode>(
+                                    title: const Text('Mode Terang (Light)'),
+                                    value: ThemeMode.light,
+                                    groupValue: currentTheme,
+                                    onChanged: (v) {
+                                      if (v != null) {
+                                        ref
+                                            .read(themeProvider.notifier)
+                                            .setMode(v);
+                                      }
+                                    },
+                                  ),
+                                  RadioListTile<ThemeMode>(
+                                    title: const Text('Mode Gelap (Dark)'),
+                                    value: ThemeMode.dark,
+                                    groupValue: currentTheme,
+                                    onChanged: (v) {
+                                      if (v != null) {
+                                        ref
+                                            .read(themeProvider.notifier)
+                                            .setMode(v);
+                                      }
+                                    },
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: AppRadius.medium,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       child: Row(
                         children: [
                           const Icon(

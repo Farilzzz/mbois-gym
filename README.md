@@ -4,7 +4,7 @@ Sistem Manajemen Personal Trainer (PT) resmi untuk operasional **Mbois Gym** (Ta
 
 Aplikasi client dibangun menggunakan **Flutter** dengan **Firebase Authentication** dan **Cloud Firestore** sebagai backend operasional utama yang terpusat, real-time, dan konsisten antarperangkat.
 
-Repository Resmi Revisi: [https://github.com/Farilzzz/mbois-gym](https://github.com/Farilzzz/mbois-gym)
+Repository Resmi: [https://github.com/Farilzzz/mbois-gym](https://github.com/Farilzzz/mbois-gym)
 
 ---
 
@@ -31,7 +31,21 @@ flutter run
 
 ---
 
-## 2. Persyaratan & Setup Lingkungan
+## 2. Hasil Evaluasi UAT & Ringkasan Perbaikan 2026
+
+Berdasarkan pengujian penerimaan pengguna (User Acceptance Testing / UAT) oleh anggota tim (**YakzIsGood**), aplikasi telah berhasil dijalankan pada perangkat Android penguji dengan login Firebase yang stabil. Namun, ditemukan beberapa catatan teknis dan masukan pengalaman pengguna yang telah diselesaikan secara tuntas:
+
+| No | Catatan UAT dari Penguji | Akar Masalah (Root Cause) | Tindakan & Solusi yang Diterapkan | Status |
+|---|---|---|---|---|
+| 1 | Layar merah/freeze saat membuka formulir Edit Workout | Ketiadaan in-memory mapping `_clientStringIdByWorkoutInt` saat navigasi cepat, lookup exercise/sets Firestore gagal, dan ketiadaan error boundary di form | Implementasi fallback resolver Firestore `_resolveWorkout()`, penambahan loading state, error banner informatif dengan tombol "Coba Lagi", pencegahan double submission pada tombol Simpan, dan safe null handling | **Tuntas Teratasi** |
+| 2 | Progress bar dan kuota sesi paket membingungkan | Penutupan paket terjadi sebelum evaluasi final Post-PT, ketiadaan status eksplisit `cancelled` | Penegasan formula progress kuota: $\text{Progress} = \frac{\text{Completed Sessions}}{\text{Total Sessions}}$. Pembatalan sesi tidak memotong kuota. Pembatalan paket menandai status `cancelled` secara konsisten | **Tuntas Teratasi** |
+| 3 | Klien paket batal masih tampak di daftar operasional | Klien berstatus dibatalkan masih masuk filter tab operasional | Penyaringan ketat: Klien paket dibatalkan (`cancelled`) otomatis disembunyikan dari tab Aktif, tab Selesai, beranda Home, dan pencarian operasional | **Tuntas Teratasi** |
+| 4 | Data PT Aktif di Manager Dashboard bernilai 0 / belum sesuai | Query dashboard lama hanya menghitung PT yang memiliki minimal 1 klien terdaftar | Kalkulasi metrik diperbarui agar menghitung seluruh trainer aktif terdaftar di sistem, termasuk pelatih baru yang belum memiliki klien | **Tuntas Teratasi** |
+| 5 | Tampilan grafik Manager sederhana dan belum mendukung Dark Mode | Warna elemen grafik dan teks berlatar belakang di-hardcode ke tema terang (slate/putih) | Pembaruan visual grafik `fl_chart` dengan warna tema adaptif (`Theme.of(context).brightness`), penambahan pengaturan Dark Mode mandiri di halaman profil Manager | **Tuntas Teratasi** |
+
+---
+
+## 3. Persyaratan & Setup Lingkungan
 
 ### A. Setup Flutter SDK
 - **Flutter SDK**: `^3.13.0` atau yang lebih baru (Channel stable disarankan).
@@ -239,11 +253,11 @@ Seluruh suite pengujian telah divalidasi dan berjalan hijau:
 
 | Komponen Pengujian | Perintah Eksekusi | Status Validasi |
 |---|---|---|
-| **Firestore Security Rules** | `npm run test:rules` | **68 tests passed** (0 failed) |
 | **Flutter Static Analysis** | `flutter analyze --no-fatal-infos` | **0 errors, 0 warnings** (Clean) |
-| **Flutter Unit & Widget Tests** | `flutter test` | **164 tests passed** (0 failed) |
-| **Admin CLI Suite** | `cd tools/admin && npm test` | **13 tests passed** (0 failed) |
-| **Projections Builder Suite** | `cd tools/projections && npm test` | **16 tests passed** (0 failed) |
+| **Flutter Unit & Widget Tests** | `flutter test` | **174 tests passed** (0 failed) |
+| **UAT Fix Regression Suite** | `flutter test test/uat_fix_and_ui_polish_test.dart` | **7 scenarios passed** (0 failed) |
+| **Admin CLI Suite** | `cd tools/admin && npm test` | **14 tests passed** (0 failed) |
+| **Projections Builder Suite** | `cd tools/projections && npm test` | **17 tests passed** (0 failed) |
 | **Android APK Debug Build** | `flutter build apk --debug` | **BUILD SUCCESSFUL** (`app-debug.apk`) |
 
 ### Cakupan Kasus Uji Kritis:

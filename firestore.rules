@@ -112,7 +112,7 @@ service cloud.firestore {
             (
               !request.resource.data.diff(resource.data).affectedKeys().hasAny(['completedCount', 'totalSessions'])
               && (request.resource.data.status == resource.data.status
-                || (resource.data.status == 'active' && request.resource.data.status == 'closed'))
+                || (resource.data.status == 'active' && request.resource.data.status in ['closed', 'cancelled']))
             )
             ||
             (

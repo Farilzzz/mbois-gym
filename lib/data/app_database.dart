@@ -326,8 +326,11 @@ class AppDatabase extends _$AppDatabase {
           throw ArgumentError('Package must be 8, 12, or 16 sessions');
         }
         final latest = await currentPackage(clientId);
-        if (latest == null || latest.status != 'closed') {
-          throw StateError('Paket aktif harus ditutup sebelum perpanjangan');
+        if (latest == null ||
+            (latest.status != 'closed' && latest.status != 'cancelled')) {
+          throw StateError(
+            'Paket aktif harus ditutup atau dibatalkan sebelum perpanjangan',
+          );
         }
         final id = await into(ptPackages).insert(
           PtPackagesCompanion.insert(

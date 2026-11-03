@@ -78,6 +78,7 @@ abstract class GymRepository {
   Future<List<PtPackage>> allPackagesForTrainer(int trainerId);
   Future<List<Session>> allSessionsForTrainer(int trainerId);
   Future<void> closePackage(int packageId);
+  Future<void> cancelPackage(int packageId, {String? reason});
   Future<List<ExerciseCatalogData>> get exerciseCatalog;
 
   // Attendance & Package Sales Methods
@@ -441,6 +442,18 @@ class SqliteGymRepository implements GymRepository {
   }
 
   @override
+  Future<void> cancelPackage(int packageId, {String? reason}) async {
+    await (db.update(
+      db.ptPackages,
+    )..where((p) => p.id.equals(packageId))).write(
+      PtPackagesCompanion(
+        status: const Value('cancelled'),
+        closedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  @override
   Future<List<ExerciseCatalogData>> get exerciseCatalog =>
       db.select(db.exerciseCatalog).get();
 
@@ -586,6 +599,7 @@ class FirestoreGymRepository implements GymRepository {
   final Map<int, String> _clientStringIdByPkgInt = {};
   final Map<int, String> _clientStringIdBySessionInt = {};
   final Map<int, String> _clientStringIdByWorkoutInt = {};
+  final Map<int, List<WorkoutSet>> _cachedSetsByExerciseId = {};
 
   FirestoreGymRepository({FirebaseFirestore? firestore, FirebaseAuth? auth})
     : firestore = firestore ?? FirebaseFirestore.instance,
@@ -964,18 +978,64 @@ class FirestoreGymRepository implements GymRepository {
     return null;
   }
 
+  Future<({String clientDocId, String workoutDocId})?> _resolveWorkout(
+    int workoutIntId,
+  ) async {
+    final cachedClient = _clientStringIdByWorkoutInt[workoutIntId];
+    final cachedWorkout = _workoutDocIdByInt[workoutIntId];
+    if (cachedClient != null && cachedWorkout != null) {
+      return (clientDocId: cachedClient, workoutDocId: cachedWorkout);
+    }
+
+    final uid = currentUid;
+    final clientsQuery = uid != null
+        ? await firestore
+            .collection('clients')
+            .where('assignedTrainerIds', arrayContains: uid)
+            .get()
+        : await firestore.collection('clients').get();
+
+    for (final client in clientsQuery.docs) {
+      final workouts = await client.reference
+          .collection('workouts')
+          .where('id', isEqualTo: workoutIntId)
+          .limit(1)
+          .get();
+      if (workouts.docs.isEmpty) continue;
+      final workoutDocId = workouts.docs.first.id;
+      _workoutDocIdByInt[workoutIntId] = workoutDocId;
+      _clientStringIdByWorkoutInt[workoutIntId] = client.id;
+      return (clientDocId: client.id, workoutDocId: workoutDocId);
+    }
+    return null;
+  }
+
   @override
   Future<List<Session>> packageSessions(int packageId) async {
     final resolved = await _resolvePackage(packageId);
     if (resolved == null) return [];
     final clientDocId = resolved.clientDocId;
 
-    final q = await firestore
+    var q = await firestore
         .collection('clients')
         .doc(clientDocId)
         .collection('sessions')
         .where('packageIntId', isEqualTo: packageId)
         .get();
+
+    if (q.docs.isEmpty) {
+      try {
+        final qFallback = await firestore
+            .collection('clients')
+            .doc(clientDocId)
+            .collection('sessions')
+            .where('packageDocId', isEqualTo: resolved.packageDocId)
+            .get();
+        if (qFallback.docs.isNotEmpty) {
+          q = qFallback;
+        }
+      } catch (_) {}
+    }
 
     final List<Session> list = [];
     for (final doc in q.docs) {
@@ -1018,7 +1078,41 @@ class FirestoreGymRepository implements GymRepository {
         .where('status', isEqualTo: 'completed')
         .get();
 
-    return q.docs.length;
+    int count = q.docs.length;
+
+    if (count == 0) {
+      try {
+        final qFallback = await firestore
+            .collection('clients')
+            .doc(clientDocId)
+            .collection('sessions')
+            .where('packageDocId', isEqualTo: resolved.packageDocId)
+            .where('status', isEqualTo: 'completed')
+            .get();
+        if (qFallback.docs.isNotEmpty) {
+          count = qFallback.docs.length;
+        }
+      } catch (_) {}
+    }
+
+    // Safety fallback: if session collection is partially synced, check package completedCount
+    try {
+      final pkgSnap = await firestore
+          .collection('clients')
+          .doc(clientDocId)
+          .collection('packages')
+          .doc(resolved.packageDocId)
+          .get();
+      if (pkgSnap.exists && pkgSnap.data() != null) {
+        final recordedCount =
+            (pkgSnap.data()!['completedCount'] as num?)?.toInt() ?? 0;
+        if (recordedCount > count) {
+          count = recordedCount;
+        }
+      }
+    } catch (_) {}
+
+    return count;
   }
 
   @override
@@ -1482,15 +1576,14 @@ class FirestoreGymRepository implements GymRepository {
     int? sessionId,
     required List<ExerciseDraft> exercises,
   }) async {
-    final clientDocId = _clientStringIdByWorkoutInt[logId];
-    final workoutDocId = _workoutDocIdByInt[logId];
-    if (clientDocId == null || workoutDocId == null) return;
+    final resolved = await _resolveWorkout(logId);
+    if (resolved == null) return;
 
     final workoutRef = firestore
         .collection('clients')
-        .doc(clientDocId)
+        .doc(resolved.clientDocId)
         .collection('workouts')
-        .doc(workoutDocId);
+        .doc(resolved.workoutDocId);
 
     double totalVolume = 0.0;
     final List<Map<String, dynamic>> exercisesJson = [];
@@ -1499,21 +1592,36 @@ class FirestoreGymRepository implements GymRepository {
     for (final ex in exercises) {
       final List<Map<String, dynamic>> setsJson = [];
       int setCounter = 1;
+      final List<WorkoutSet> setsCache = [];
       for (final s in ex.sets) {
         final double weight = s.weightKg ?? 0.0;
         final int reps = s.reps;
         totalVolume += (weight * reps);
+        final setId = (logId * 100) + (exCounter * 10) + setCounter;
         setsJson.add({
-          'id': (logId * 100) + (exCounter * 10) + setCounter,
+          'id': setId,
           'setNumber': setCounter,
           'stage': s.stage,
           'reps': reps,
           'weightKg': weight,
         });
+        setsCache.add(
+          WorkoutSet(
+            id: setId,
+            exerciseId: ex.id ?? ((logId * 10) + exCounter),
+            setNumber: setCounter,
+            stage: s.stage,
+            reps: reps,
+            weightKg: weight,
+          ),
+        );
         setCounter++;
       }
+      final exId = ex.id ?? ((logId * 10) + exCounter);
+      _cachedSetsByExerciseId[exId] = setsCache;
+
       exercisesJson.add({
-        'id': (logId * 10) + exCounter,
+        'id': exId,
         'name': ex.name,
         'method': ex.method,
         'equipment': ex.equipment,
@@ -1538,15 +1646,14 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<bool> deleteWorkout(int logId) async {
-    final clientDocId = _clientStringIdByWorkoutInt[logId];
-    final workoutDocId = _workoutDocIdByInt[logId];
-    if (clientDocId == null || workoutDocId == null) return false;
+    final resolved = await _resolveWorkout(logId);
+    if (resolved == null) return false;
 
     await firestore
         .collection('clients')
-        .doc(clientDocId)
+        .doc(resolved.clientDocId)
         .collection('workouts')
-        .doc(workoutDocId)
+        .doc(resolved.workoutDocId)
         .delete();
 
     _workoutDocIdByInt.remove(logId);
@@ -1556,7 +1663,30 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<bool> deleteWorkoutExercise(int exerciseId) async {
-    for (final entry in _clientStringIdByWorkoutInt.entries) {
+    _cachedSetsByExerciseId.remove(exerciseId);
+
+    var entries = _clientStringIdByWorkoutInt.entries.toList();
+    if (entries.isEmpty) {
+      final uid = currentUid;
+      final q = uid != null
+          ? await firestore
+              .collection('clients')
+              .where('assignedTrainerIds', arrayContains: uid)
+              .get()
+          : await firestore.collection('clients').get();
+      for (final cDoc in q.docs) {
+        final wDocs = await cDoc.reference.collection('workouts').get();
+        for (final wDoc in wDocs.docs) {
+          final wId =
+              (wDoc.data()['id'] as num?)?.toInt() ?? _deriveIntId(wDoc.id);
+          _clientStringIdByWorkoutInt[wId] = cDoc.id;
+          _workoutDocIdByInt[wId] = wDoc.id;
+        }
+      }
+      entries = _clientStringIdByWorkoutInt.entries.toList();
+    }
+
+    for (final entry in entries) {
       final logIntId = entry.key;
       final clientDocId = entry.value;
       final workoutDocId = _workoutDocIdByInt[logIntId];
@@ -1598,7 +1728,28 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<bool> deleteWorkoutSet(int setId) async {
-    for (final entry in _clientStringIdByWorkoutInt.entries) {
+    var entries = _clientStringIdByWorkoutInt.entries.toList();
+    if (entries.isEmpty) {
+      final uid = currentUid;
+      final q = uid != null
+          ? await firestore
+              .collection('clients')
+              .where('assignedTrainerIds', arrayContains: uid)
+              .get()
+          : await firestore.collection('clients').get();
+      for (final cDoc in q.docs) {
+        final wDocs = await cDoc.reference.collection('workouts').get();
+        for (final wDoc in wDocs.docs) {
+          final wId =
+              (wDoc.data()['id'] as num?)?.toInt() ?? _deriveIntId(wDoc.id);
+          _clientStringIdByWorkoutInt[wId] = cDoc.id;
+          _workoutDocIdByInt[wId] = wDoc.id;
+        }
+      }
+      entries = _clientStringIdByWorkoutInt.entries.toList();
+    }
+
+    for (final entry in entries) {
       final logIntId = entry.key;
       final clientDocId = entry.value;
       final workoutDocId = _workoutDocIdByInt[logIntId];
@@ -1624,6 +1775,10 @@ class FirestoreGymRepository implements GymRepository {
         if (sets.length != initialSetsLen) {
           ex['sets'] = sets;
           modified = true;
+          final exId = (ex['id'] as num?)?.toInt();
+          if (exId != null) {
+            _cachedSetsByExerciseId.remove(exId);
+          }
         }
       }
 
@@ -1687,15 +1842,14 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<List<WorkoutExercise>> exercisesForLog(int logId) async {
-    final clientDocId = _clientStringIdByWorkoutInt[logId];
-    final workoutDocId = _workoutDocIdByInt[logId];
-    if (clientDocId == null || workoutDocId == null) return [];
+    final resolved = await _resolveWorkout(logId);
+    if (resolved == null) return [];
 
     final snap = await firestore
         .collection('clients')
-        .doc(clientDocId)
+        .doc(resolved.clientDocId)
         .collection('workouts')
-        .doc(workoutDocId)
+        .doc(resolved.workoutDocId)
         .get();
 
     if (!snap.exists || snap.data() == null) return [];
@@ -1703,9 +1857,26 @@ class FirestoreGymRepository implements GymRepository {
 
     final List<WorkoutExercise> result = [];
     for (final item in rawExercises) {
+      final exId = (item['id'] as num?)?.toInt() ?? 1;
+      final rawSets = item['sets'] as List? ?? [];
+      final List<WorkoutSet> sets = [];
+      for (final s in rawSets) {
+        sets.add(
+          WorkoutSet(
+            id: (s['id'] as num?)?.toInt() ?? 1,
+            exerciseId: exId,
+            setNumber: (s['setNumber'] as num?)?.toInt() ?? 1,
+            stage: (s['stage'] as num?)?.toInt() ?? 1,
+            reps: (s['reps'] as num?)?.toInt() ?? 10,
+            weightKg: (s['weightKg'] as num?)?.toDouble(),
+          ),
+        );
+      }
+      _cachedSetsByExerciseId[exId] = sets;
+
       result.add(
         WorkoutExercise(
-          id: (item['id'] as num?)?.toInt() ?? 1,
+          id: exId,
           logId: logId,
           catalogId: (item['catalogId'] as num?)?.toInt(),
           name: item['name'] as String? ?? 'Exercise',
@@ -1723,6 +1894,10 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<List<WorkoutSet>> setsForExercise(int exerciseId) async {
+    if (_cachedSetsByExerciseId.containsKey(exerciseId)) {
+      return _cachedSetsByExerciseId[exerciseId]!;
+    }
+
     for (final entry in _clientStringIdByWorkoutInt.entries) {
       final logIntId = entry.key;
       final clientDocId = entry.value;
@@ -1739,21 +1914,25 @@ class FirestoreGymRepository implements GymRepository {
       if (!snap.exists || snap.data() == null) continue;
       final rawExercises = snap.data()!['exercises'] as List? ?? [];
       for (final ex in rawExercises) {
-        if ((ex['id'] as num?)?.toInt() == exerciseId) {
-          final rawSets = ex['sets'] as List? ?? [];
-          final List<WorkoutSet> sets = [];
-          for (final s in rawSets) {
-            sets.add(
-              WorkoutSet(
-                id: (s['id'] as num?)?.toInt() ?? 1,
-                exerciseId: exerciseId,
-                setNumber: (s['setNumber'] as num?)?.toInt() ?? 1,
-                stage: (s['stage'] as num?)?.toInt() ?? 1,
-                reps: (s['reps'] as num?)?.toInt() ?? 10,
-                weightKg: (s['weightKg'] as num?)?.toDouble(),
-              ),
-            );
-          }
+        final exId = (ex['id'] as num?)?.toInt();
+        final rawSets = ex['sets'] as List? ?? [];
+        final List<WorkoutSet> sets = [];
+        for (final s in rawSets) {
+          sets.add(
+            WorkoutSet(
+              id: (s['id'] as num?)?.toInt() ?? 1,
+              exerciseId: exId ?? exerciseId,
+              setNumber: (s['setNumber'] as num?)?.toInt() ?? 1,
+              stage: (s['stage'] as num?)?.toInt() ?? 1,
+              reps: (s['reps'] as num?)?.toInt() ?? 10,
+              weightKg: (s['weightKg'] as num?)?.toDouble(),
+            ),
+          );
+        }
+        if (exId != null) {
+          _cachedSetsByExerciseId[exId] = sets;
+        }
+        if (exId == exerciseId) {
           return sets;
         }
       }
@@ -1763,15 +1942,14 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<WorkoutLog?> getWorkoutLog(int logId) async {
-    final clientDocId = _clientStringIdByWorkoutInt[logId];
-    final workoutDocId = _workoutDocIdByInt[logId];
-    if (clientDocId == null || workoutDocId == null) return null;
+    final resolved = await _resolveWorkout(logId);
+    if (resolved == null) return null;
 
     final snap = await firestore
         .collection('clients')
-        .doc(clientDocId)
+        .doc(resolved.clientDocId)
         .collection('workouts')
-        .doc(workoutDocId)
+        .doc(resolved.workoutDocId)
         .get();
 
     if (!snap.exists || snap.data() == null) return null;
@@ -1895,15 +2073,40 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<void> closePackage(int packageId) async {
-    final clientDocId = _clientStringIdByPkgInt[packageId];
-    final pkgDocId = _pkgDocIdByInt[packageId];
-    if (clientDocId == null || pkgDocId == null) return;
+    final resolved = await _resolvePackage(packageId);
+    if (resolved == null) return;
     await firestore
         .collection('clients')
-        .doc(clientDocId)
+        .doc(resolved.clientDocId)
         .collection('packages')
-        .doc(pkgDocId)
+        .doc(resolved.packageDocId)
         .update({'status': 'closed', 'closedAt': FieldValue.serverTimestamp()});
+  }
+
+  @override
+  Future<void> cancelPackage(int packageId, {String? reason}) async {
+    final resolved = await _resolvePackage(packageId);
+    if (resolved == null) return;
+
+    await firestore
+        .collection('clients')
+        .doc(resolved.clientDocId)
+        .collection('packages')
+        .doc(resolved.packageDocId)
+        .update({
+          'status': 'cancelled',
+          'cancelledAt': FieldValue.serverTimestamp(),
+          if (reason != null && reason.isNotEmpty) 'cancelReason': reason,
+        });
+
+    // Mark client document status as cancelled so it is excluded from operational views
+    await firestore
+        .collection('clients')
+        .doc(resolved.clientDocId)
+        .update({
+          'status': 'cancelled',
+          'cancelledAt': FieldValue.serverTimestamp(),
+        });
   }
 
   @override

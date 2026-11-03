@@ -331,10 +331,7 @@ class SqliteManagerDashboardRepository implements ManagerDashboardRepository {
       );
     }
 
-    final activePtCount = trainers.where((t) {
-      final tClients = allClients.where((c) => c.trainerId == t.id);
-      return tClients.isNotEmpty;
-    }).length;
+    final activePtCount = trainers.length;
 
     return ManagerDashboardData(
       totalActivePt: activePtCount,
@@ -670,6 +667,17 @@ class _ManagerDashboardScreenState
     );
   }
 
+  bool get _isDark => Theme.of(context).brightness == Brightness.dark;
+  Color get _textPrimary => _isDark ? Colors.white : const Color(0xFF0F172A);
+  Color get _textSecondary =>
+      _isDark ? const Color(0xFFCBD5E1) : const Color(0xFF334155);
+  Color get _textMuted =>
+      _isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+  Color get _containerBg =>
+      _isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
+  Color get _containerBorder =>
+      _isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -700,14 +708,20 @@ class _ManagerDashboardScreenState
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? Theme.of(context).scaffoldBackgroundColor
+            : const Color(0xFFF8FAFC),
         appBar: AppBar(
           title: const Text(
             'Dashboard Manajemen PT',
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xFF0F172A),
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Theme.of(context).colorScheme.surface
+              : Colors.white,
+          foregroundColor: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : const Color(0xFF0F172A),
           elevation: 0.5,
           actions: [
             IconButton(
@@ -1035,10 +1049,10 @@ class _ManagerDashboardScreenState
             alignment: Alignment.centerLeft,
             child: Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
+                color: _textPrimary,
               ),
             ),
           ),
@@ -1073,12 +1087,12 @@ class _ManagerDashboardScreenState
               spacing: 8,
               runSpacing: 4,
               children: [
-                const Text(
+                Text(
                   'Target Triwulan',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
+                    color: _textPrimary,
                   ),
                 ),
                 TextButton.icon(
@@ -1100,10 +1114,10 @@ class _ManagerDashboardScreenState
               children: [
                 Text(
                   'Target: ${formatRupiah(_quarterlyTarget)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF334155),
+                    color: _textSecondary,
                   ),
                 ),
                 Text(
@@ -1124,7 +1138,7 @@ class _ManagerDashboardScreenState
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 10,
-                backgroundColor: const Color(0xFFE2E8F0),
+                backgroundColor: _containerBorder,
                 valueColor: AlwaysStoppedAnimation<Color>(
                   achievementPercentage >= 100
                       ? Colors.green
@@ -1135,7 +1149,7 @@ class _ManagerDashboardScreenState
             const SizedBox(height: 10),
             Text(
               'Sisa Menuju Target: ${formatRupiah(remainingAmount)}',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 12, color: _textMuted),
             ),
           ],
         ),
@@ -1168,20 +1182,20 @@ class _ManagerDashboardScreenState
               spacing: 8,
               runSpacing: 4,
               children: [
-                const Text(
+                Text(
                   'Grafik Penjualan Bulanan',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
+                    color: _textPrimary,
                   ),
                 ),
                 Text(
                   'Q$_selectedQuarter $_selectedYear',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF64748B),
+                    color: _textMuted,
                   ),
                 ),
               ],
@@ -1228,9 +1242,9 @@ class _ManagerDashboardScreenState
                             child: Text(
                               '${juta.toStringAsFixed(1)}jt',
                               textAlign: TextAlign.end,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 9,
-                                color: Color(0xFF94A3B8),
+                                color: _textMuted,
                               ),
                             ),
                           );
@@ -1248,10 +1262,10 @@ class _ManagerDashboardScreenState
                               padding: const EdgeInsets.only(top: 8),
                               child: Text(
                                 monthLabels[idx],
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFF334155),
+                                  color: _textSecondary,
                                 ),
                               ),
                             );
@@ -1261,9 +1275,13 @@ class _ManagerDashboardScreenState
                       ),
                     ),
                   ),
-                  gridData: const FlGridData(
+                  gridData: FlGridData(
                     show: true,
                     drawVerticalLine: false,
+                    getDrawingHorizontalLine: (val) => FlLine(
+                      color: _isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                      strokeWidth: 1,
+                    ),
                   ),
                   borderData: FlBorderData(show: false),
                   barGroups: List.generate(3, (idx) {
@@ -1302,12 +1320,12 @@ class _ManagerDashboardScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Daftar Perbandingan Kinerja PT',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
+                color: _textPrimary,
               ),
             ),
             const SizedBox(height: 12),
@@ -1345,10 +1363,10 @@ class _ManagerDashboardScreenState
                                       Expanded(
                                         child: Text(
                                           pt.name,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 14,
-                                            color: Color(0xFF0F172A),
+                                            color: _textPrimary,
                                           ),
                                         ),
                                       ),
@@ -1360,7 +1378,7 @@ class _ManagerDashboardScreenState
                                         decoration: BoxDecoration(
                                           color: pt.status == 'active'
                                               ? const Color(0xFFDCFCE7)
-                                              : const Color(0xFFF1F5F9),
+                                              : _containerBg,
                                           borderRadius: BorderRadius.circular(
                                             4,
                                           ),
@@ -1374,7 +1392,7 @@ class _ManagerDashboardScreenState
                                             fontWeight: FontWeight.bold,
                                             color: pt.status == 'active'
                                                 ? const Color(0xFF166534)
-                                                : const Color(0xFF64748B),
+                                                : _textMuted,
                                           ),
                                         ),
                                       ),
@@ -1383,9 +1401,9 @@ class _ManagerDashboardScreenState
                                   const SizedBox(height: 2),
                                   Text(
                                     pt.specialization,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
-                                      color: Color(0xFF64748B),
+                                      color: _textMuted,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -1413,14 +1431,14 @@ class _ManagerDashboardScreenState
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF1F5F9),
+                                color: _containerBg,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
                                 'Klien Aktif: ${pt.activeClients}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Color(0xFF475569),
+                                  color: _textSecondary,
                                 ),
                               ),
                             ),
@@ -1430,14 +1448,14 @@ class _ManagerDashboardScreenState
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF1F5F9),
+                                color: _containerBg,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
                                 'Paket Terjual: ${pt.packagesSold}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Color(0xFF475569),
+                                  color: _textSecondary,
                                 ),
                               ),
                             ),
@@ -1576,18 +1594,18 @@ class _ManagerDashboardScreenState
                               children: [
                                 Text(
                                   pt.name,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF0F172A),
+                                    color: _textPrimary,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   pt.specialization,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 13,
-                                    color: Color(0xFF64748B),
+                                    color: _textMuted,
                                   ),
                                 ),
                               ],
@@ -1609,10 +1627,10 @@ class _ManagerDashboardScreenState
                           // Target Achievement Card
                           Card(
                             elevation: 0,
-                            color: const Color(0xFFF8FAFC),
+                            color: _containerBg,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: const BorderSide(color: Color(0xFFE2E8F0)),
+                              side: BorderSide(color: _containerBorder),
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(14),
@@ -1623,12 +1641,12 @@ class _ManagerDashboardScreenState
                                     mainAxisAlignment:
                                         MainAxisAlignment.spaceBetween,
                                     children: [
-                                      const Text(
+                                      Text(
                                         'Target Penjualan Triwulan',
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 13,
-                                          color: Color(0xFF0F172A),
+                                          color: _textPrimary,
                                         ),
                                       ),
                                       Container(
@@ -1662,18 +1680,18 @@ class _ManagerDashboardScreenState
                                   const SizedBox(height: 10),
                                   Text(
                                     'Nilai Paket Terjual Tercatat: ${formatRupiah(pt.totalSales)}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
-                                      color: Color(0xFF334155),
+                                      color: _textSecondary,
                                     ),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
                                     'Target: ${formatRupiah(pt.quarterlyTarget)} (${pt.achievementPercentage.toStringAsFixed(1)}%)',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12,
-                                      color: Color(0xFF64748B),
+                                      color: _textMuted,
                                     ),
                                   ),
                                   if (!pt.isTargetAchieved) ...[
@@ -1688,12 +1706,12 @@ class _ManagerDashboardScreenState
                                     ),
                                   ],
                                   const SizedBox(height: 10),
-                                  const Text(
+                                  Text(
                                     'Rincian Bulanan Triwulan Ini:',
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFF64748B),
+                                      color: _textMuted,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
@@ -1712,19 +1730,19 @@ class _ManagerDashboardScreenState
                                         children: [
                                           Text(
                                             labels[i],
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w600,
-                                              color: Color(0xFF475569),
+                                              color: _textSecondary,
                                             ),
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
                                             formatRupiah(amt),
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 11,
                                               fontWeight: FontWeight.bold,
-                                              color: Color(0xFF0F172A),
+                                              color: _textPrimary,
                                             ),
                                           ),
                                         ],
@@ -1736,12 +1754,12 @@ class _ManagerDashboardScreenState
                             ),
                           ),
                           const SizedBox(height: 16),
-                          const Text(
+                          Text(
                             'Daftar Klien yang Ditangani',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF0F172A),
+                              color: _textPrimary,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -1752,15 +1770,15 @@ class _ManagerDashboardScreenState
                                 horizontal: 16,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF8FAFC),
+                                color: _containerBg,
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: const Center(
+                              child: Center(
                                 child: Text(
                                   'Belum ada klien yang ditangani oleh PT ini.',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: Color(0xFF64748B),
+                                    color: _textMuted,
                                   ),
                                 ),
                               ),
@@ -1866,28 +1884,28 @@ class _ManagerDashboardScreenState
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
+                          color: _containerBg,
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          border: Border.all(color: _containerBorder),
                         ),
                         child: Column(
                           children: [
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
+                                Text(
                                   'Paket yang Diikuti:',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: Color(0xFF64748B),
+                                    color: _textMuted,
                                   ),
                                 ),
                                 Text(
                                   client.packageName,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF0F172A),
+                                    color: _textPrimary,
                                   ),
                                 ),
                               ],
@@ -1896,11 +1914,11 @@ class _ManagerDashboardScreenState
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
+                                Text(
                                   'Sesi Dihadiri:',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: Color(0xFF64748B),
+                                    color: _textMuted,
                                   ),
                                 ),
                                 Text(
@@ -1917,11 +1935,11 @@ class _ManagerDashboardScreenState
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
+                                Text(
                                   'Sesi Belum Dijalani:',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: Color(0xFF64748B),
+                                    color: _textMuted,
                                   ),
                                 ),
                                 Text(
@@ -1938,12 +1956,12 @@ class _ManagerDashboardScreenState
                         ),
                       ),
                       const SizedBox(height: 14),
-                      const Text(
+                      Text(
                         'Riwayat Jadwal & Kehadiran Sesi',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF0F172A),
+                          color: _textPrimary,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -1951,11 +1969,11 @@ class _ManagerDashboardScreenState
                         Container(
                           padding: const EdgeInsets.all(16),
                           alignment: Alignment.center,
-                          child: const Text(
+                          child: Text(
                             'Belum ada jadwal sesi tercatat.',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF94A3B8),
+                              color: _textMuted,
                             ),
                           ),
                         )
@@ -1970,23 +1988,25 @@ class _ManagerDashboardScreenState
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: _isDark
+                                  ? const Color(0xFF0F172A)
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: const Color(0xFFE2E8F0),
+                                color: _containerBorder,
                               ),
                             ),
                             child: Row(
                               children: [
                                 CircleAvatar(
                                   radius: 12,
-                                  backgroundColor: const Color(0xFFF1F5F9),
+                                  backgroundColor: _containerBg,
                                   child: Text(
                                     '${rec.sessionNumber}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
-                                      color: Color(0xFF334155),
+                                      color: _textSecondary,
                                     ),
                                   ),
                                 ),
@@ -2066,17 +2086,17 @@ class _ManagerDashboardScreenState
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: _containerBg,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.bar_chart_outlined, size: 48, color: Color(0xFF94A3B8)),
-          SizedBox(height: 8),
+          const Icon(Icons.bar_chart_outlined, size: 48, color: Color(0xFF94A3B8)),
+          const SizedBox(height: 8),
           Text(
             'Belum ada data kinerja PT pada periode ini.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 13, color: _textMuted),
           ),
         ],
       ),

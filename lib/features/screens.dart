@@ -1467,13 +1467,13 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
                         ),
                       );
                       if (confirm == true) {
-                        await db.closePackage(package.id);
+                        await db.cancelPackage(package.id);
                         onRefresh?.call();
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text(
-                                'Paket PT berhasil ditutup/dibatalkan.',
+                                'Paket PT berhasil dibatalkan.',
                               ),
                             ),
                           );
@@ -3568,6 +3568,7 @@ class _PostPtTabState extends ConsumerState<_PostPtTab> {
                         ),
                       );
                       if (confirmed != true) return;
+                      if (!mounted) return;
 
                       setState(() => _saving = true);
                       final messenger = ScaffoldMessenger.of(context);
@@ -3945,46 +3946,71 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
   int? _selectedSessionId;
   bool _saving = false;
   bool _loadingWorkout = false;
+  String? _loadError;
+  List<Session> _availableSessions = [];
 
   @override
   void initState() {
     super.initState();
-    if (widget.logId != null) {
-      _loadExistingWorkout();
-    }
+    _loadData();
   }
 
-  Future<void> _loadExistingWorkout() async {
-    setState(() => _loadingWorkout = true);
-    final db = ref.read(gymRepositoryProvider);
-    final log = await db.getWorkoutLog(widget.logId!);
-    if (log != null) {
-      _workoutNotes.text = log.notes;
-      _selectedSessionId = log.sessionId;
-      final exercises = await db.exercisesForLog(log.id);
-      _exercises.clear();
-      for (final ex in exercises) {
-        final sets = await db.setsForExercise(ex.id);
-        _exercises.add(
-          ExerciseDraft(
-            id: ex.id,
-            name: ex.name,
-            method: ex.method,
-            equipment: ex.equipment,
-            groupKey: ex.groupKey,
-            rpe: ex.rpe,
-            rir: ex.rir,
-            notes: ex.notes,
-            sets: sets
-                .map(
-                  (s) => SetDraft(s.reps, s.weightKg, stage: s.stage, id: s.id),
-                )
-                .toList(),
-          ),
-        );
+  Future<void> _loadData() async {
+    setState(() {
+      _loadingWorkout = true;
+      _loadError = null;
+    });
+    try {
+      final db = ref.read(gymRepositoryProvider);
+      final pkg = (await db.currentPackage(widget.clientId)) ??
+          (await db.latestPackage(widget.clientId));
+      if (pkg != null) {
+        _availableSessions = await db.packageSessions(pkg.id);
+      }
+
+      if (widget.logId != null) {
+        final log = await db.getWorkoutLog(widget.logId!);
+        if (log != null) {
+          _workoutNotes.text = log.notes;
+          _selectedSessionId = log.sessionId;
+          final exercises = await db.exercisesForLog(log.id);
+          _exercises.clear();
+          for (final ex in exercises) {
+            final sets = await db.setsForExercise(ex.id);
+            _exercises.add(
+              ExerciseDraft(
+                id: ex.id,
+                name: ex.name,
+                method: ex.method,
+                equipment: ex.equipment,
+                groupKey: ex.groupKey,
+                rpe: ex.rpe,
+                rir: ex.rir,
+                notes: ex.notes,
+                sets: sets
+                    .map(
+                      (s) => SetDraft(
+                        s.reps,
+                        s.weightKg,
+                        stage: s.stage,
+                        id: s.id,
+                      ),
+                    )
+                    .toList(),
+              ),
+            );
+          }
+        } else {
+          _loadError = 'Data latihan tidak ditemukan di database.';
+        }
+      }
+    } catch (e) {
+      _loadError = 'Gagal memuat data latihan: $e';
+    } finally {
+      if (mounted) {
+        setState(() => _loadingWorkout = false);
       }
     }
-    if (mounted) setState(() => _loadingWorkout = false);
   }
 
   bool _hasUnsavedChanges() =>
@@ -4678,16 +4704,48 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
         ),
         body: _loadingWorkout
             ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        size: 48,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _loadError!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kMboisTeal,
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Coba Lagi'),
+                        onPressed: _loadData,
+                      ),
+                    ],
+                  ),
+                ),
+              )
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  FutureBuilder<List<Session>>(
-                    future: db.currentPackage(widget.clientId).then((pkg) {
-                      if (pkg == null) return <Session>[];
-                      return db.packageSessions(pkg.id);
-                    }),
-                    builder: (context, sessSnapshot) {
-                      final sessions = sessSnapshot.data ?? [];
+                  Builder(
+                    builder: (context) {
+                      final hasSelected =
+                          _selectedSessionId == null ||
+                          _availableSessions.any(
+                            (s) => s.id == _selectedSessionId,
+                          );
                       return DropdownButtonFormField<int?>(
                         isExpanded: true,
                         initialValue: _selectedSessionId,
@@ -4703,7 +4761,7 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          ...sessions.map(
+                          ..._availableSessions.map(
                             (s) => DropdownMenuItem<int?>(
                               value: s.id,
                               child: Text(
@@ -4712,6 +4770,14 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
                               ),
                             ),
                           ),
+                          if (_selectedSessionId != null && !hasSelected)
+                            DropdownMenuItem<int?>(
+                              value: _selectedSessionId,
+                              child: Text(
+                                'Sesi Terkait (ID: $_selectedSessionId)',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                         ],
                         onChanged: (v) =>
                             setState(() => _selectedSessionId = v),
@@ -4959,21 +5025,20 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
                             setState(() => _saving = true);
                             final messenger = ScaffoldMessenger.of(context);
                             final nav = Navigator.of(context);
-                            final pkg = await db.currentPackage(
-                              widget.clientId,
-                            );
-                            if (pkg == null) {
-                              messenger.showSnackBar(
-                                const SnackBar(
-                                  content: Text('Paket klien tidak ditemukan.'),
-                                ),
-                              );
-                              if (mounted) {
-                                setState(() => _saving = false);
-                              }
-                              return;
-                            }
                             try {
+                              final pkg =
+                                  (await db.currentPackage(widget.clientId)) ??
+                                  (await db.latestPackage(widget.clientId));
+                              if (pkg == null) {
+                                messenger.showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Paket klien tidak ditemukan.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
                               if (widget.logId != null) {
                                 await db.updateWorkout(
                                   logId: widget.logId!,
@@ -5015,6 +5080,9 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
                                 messenger.showSnackBar(
                                   SnackBar(content: Text('Error: $e')),
                                 );
+                              }
+                            } finally {
+                              if (mounted) {
                                 setState(() => _saving = false);
                               }
                             }
