@@ -226,15 +226,13 @@ service cloud.firestore {
         && request.resource.data.name is string;
       allow delete: if activeManager();
     }
+    // Financial records are a trusted backend-only ledger. A client SDK may read
+    // only its own existing sale; it must never choose a price, paid status, or
+    // another client's identity. Cloud Functions/Admin SDK validates ownership,
+    // official pricing, payment status, and idempotency before writing.
     match /package_sales/{saleId} {
       allow read: if activeManager() || (activeTrainer() && resource.data.trainerId == request.auth.uid);
-      allow create: if (activeManager() || activeTrainer())
-        && request.resource.data.keys().hasAll(['clientId', 'clientName', 'trainerId', 'trainerName', 'tierName', 'sessionsCount', 'durationWeeks', 'price', 'status'])
-        && request.resource.data.price is number && request.resource.data.price >= 0
-        && request.resource.data.sessionsCount is int && request.resource.data.sessionsCount > 0
-        && request.resource.data.status in ['valid', 'refunded']
-        && (activeManager() || request.resource.data.trainerId == request.auth.uid);
-      allow update, delete: if false;
+      allow create, update, delete: if false;
     }
   }
 }

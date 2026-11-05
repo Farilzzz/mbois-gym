@@ -16,8 +16,10 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
   this.timeout(20000);
   before(async () => {
     // Fail closed: never allow this suite to select a live project or endpoint.
-    assert.match(process.env.FIRESTORE_EMULATOR_HOST || '', /^(127\.0\.0\.1|localhost):8085$/);
-    env = await initializeTestEnvironment({ projectId, firestore: { host: '127.0.0.1', port: 8085, rules: readFileSync('firestore.rules', 'utf8') } });
+    assert.match(process.env.FIRESTORE_EMULATOR_HOST || '', /^(127\.0\.0\.1|localhost):(8080|8085)$/);
+    const [host, portStr] = (process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8085').split(':');
+    const port = parseInt(portStr, 10);
+    env = await initializeTestEnvironment({ projectId, firestore: { host, port, rules: readFileSync('firestore.rules', 'utf8') } });
   });
   beforeEach(async () => {
     await env.clearFirestore();
@@ -231,7 +233,7 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
     await assertFails(updateDoc(doc(dbFor('pt1'), 'clients/c1/sessions/old'), { status: 'completed' }));
     await assertFails(setDoc(doc(dbFor('pt1'), 'clients/c1/sessions/bad'), { status: 'completed', sessionNumber: 1 }));
   });
-  it('package_sales allows active manager read all, trainer read own and create own; denies update/delete and tampering', async () => {
+  it('package_sales is a trusted backend ledger: manager reads all, trainer reads own, client SDK writes strictly denied', async () => {
     await env.withSecurityRulesDisabled(async ctx => {
       await setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' });
       await setDoc(doc(ctx.firestore(), 'package_sales/s1'), {
@@ -250,7 +252,9 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
     await assertSucceeds(getDocs(collection(dbFor('manager'), 'package_sales')));
     await assertSucceeds(read('pt1', 'package_sales/s1'));
     await assertFails(read('pt2', 'package_sales/s1'));
-    await assertSucceeds(setDoc(doc(dbFor('pt1'), 'package_sales/s2'), {
+
+    // Client SDK creation denied to both trainer and manager (must be backend-provisioned)
+    await assertFails(setDoc(doc(dbFor('pt1'), 'package_sales/s2'), {
       clientId: 'c1',
       clientName: 'Budi',
       trainerId: 'pt1',
@@ -261,11 +265,11 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
       price: 500000,
       status: 'valid',
     }));
-    await assertFails(setDoc(doc(dbFor('pt1'), 'package_sales/s3'), {
+    await assertFails(setDoc(doc(dbFor('manager'), 'package_sales/s2'), {
       clientId: 'c1',
       clientName: 'Budi',
-      trainerId: 'pt2',
-      trainerName: 'Coach 2',
+      trainerId: 'pt1',
+      trainerName: 'Coach 1',
       tierName: 'Paket 4 Sesi',
       sessionsCount: 4,
       durationWeeks: 4,

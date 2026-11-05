@@ -103,12 +103,12 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                           }
                         },
                   child: isSaving
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.onPrimary,
                           ),
                         )
                       : const Text('Simpan'),
@@ -177,7 +177,9 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
             child: const Text('Batal'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.dangerRed),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Keluar'),
           ),
@@ -222,10 +224,10 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.error_outline,
                     size: 48,
-                    color: AppColors.dangerRed,
+                    color: Theme.of(context).colorScheme.error,
                   ),
                   const SizedBox(height: 12),
                   const Text(
@@ -262,7 +264,9 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                   Center(
                     child: Text(
                       profile.name,
-                      style: AppTypography.screenHeader,
+                      style: AppTypography.screenHeader.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -273,13 +277,13 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.vibrantBlue,
+                        color: Theme.of(context).colorScheme.primary,
                         borderRadius: AppRadius.pill,
                       ),
-                      child: const Text(
+                      child: Text(
                         'Manager',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onPrimary,
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),
@@ -294,15 +298,17 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                     child: Column(
                       children: [
                         ListTile(
-                          leading: const Icon(
+                          leading: Icon(
                             Icons.person_outline,
-                            color: AppColors.primaryRoyalBlue,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
-                          title: const Text(
+                          title: Text(
                             'Nama Lengkap',
                             style: TextStyle(
                               fontSize: 12,
-                              color: AppColors.textMuted,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                           ),
                           subtitle: Text(
@@ -321,15 +327,17 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                         ),
                         const Divider(height: 1),
                         ListTile(
-                          leading: const Icon(
+                          leading: Icon(
                             Icons.email_outlined,
-                            color: AppColors.primaryRoyalBlue,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
-                          title: const Text(
+                          title: Text(
                             'Email',
                             style: TextStyle(
                               fontSize: 12,
-                              color: AppColors.textMuted,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                           ),
                           subtitle: Text(
@@ -341,16 +349,18 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                           ),
                         ),
                         const Divider(height: 1),
-                        const ListTile(
+                        ListTile(
                           leading: Icon(
                             Icons.badge_outlined,
-                            color: AppColors.primaryRoyalBlue,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
                           title: Text(
                             'Peran Akun',
                             style: TextStyle(
                               fontSize: 12,
-                              color: AppColors.textMuted,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                           ),
                           subtitle: Text(
@@ -377,11 +387,11 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
+                          Row(
                             children: [
                               Icon(
                                 Icons.dark_mode_outlined,
-                                color: AppColors.primaryRoyalBlue,
+                                color: Theme.of(context).colorScheme.primary,
                               ),
                               SizedBox(width: 12),
                               Text(
@@ -457,12 +467,12 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.lock_reset,
-                            color: AppColors.primaryRoyalBlue,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -477,7 +487,9 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                                   'Kirim tautan reset kata sandi',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: AppColors.textMuted,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                   ),
                                 ),
                               ],
@@ -497,8 +509,8 @@ class _ManagerProfileScreenState extends ConsumerState<ManagerProfileScreen> {
                     icon: const Icon(Icons.logout),
                     label: const Text('Keluar dari Akun'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.dangerRed,
-                      foregroundColor: Colors.white,
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
                       minimumSize: const Size.fromHeight(48),
                       shape: RoundedRectangleBorder(
                         borderRadius: AppRadius.medium,

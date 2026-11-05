@@ -138,10 +138,11 @@ class PackageSaleRecord {
     this.status = 'valid',
   });
 
-  bool get isValid =>
-      status.toLowerCase() != 'cancelled' &&
-      status.toLowerCase() != 'refunded' &&
-      status.toLowerCase() != 'void';
+  /// Only independently verified sales count as revenue. A package request
+  /// (including a recorded or pending purchase) is not payment evidence.
+  bool get isValid => status.trim().toLowerCase() == 'valid' &&
+      price > 0 && clientId.isNotEmpty && trainerId.isNotEmpty &&
+      timestamp.isAfter(DateTime.fromMillisecondsSinceEpoch(0));
 
   PackageSaleRecord copyWith({
     String? id,
@@ -188,9 +189,9 @@ class PackageSaleRecord {
       if (raw is Timestamp) return raw.toDate();
       if (raw is DateTime) return raw;
       if (raw is String) {
-        return DateTime.tryParse(raw) ?? DateTime.now();
+        return DateTime.tryParse(raw) ?? DateTime.fromMillisecondsSinceEpoch(0);
       }
-      return DateTime.now();
+      return DateTime.fromMillisecondsSinceEpoch(0);
     }
 
     return PackageSaleRecord(
@@ -204,7 +205,7 @@ class PackageSaleRecord {
       durationWeeks: (map['durationWeeks'] as num?)?.toInt() ?? 0,
       price: (map['price'] as num?)?.toInt() ?? 0,
       timestamp: parseTime(map['timestamp']),
-      status: map['status']?.toString() ?? 'valid',
+      status: map['status']?.toString() ?? 'pending',
     );
   }
 

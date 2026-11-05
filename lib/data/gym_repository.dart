@@ -94,6 +94,7 @@ abstract class GymRepository {
     String? cancelledBy,
     String? cancelReason,
   });
+  /// Legacy client-SDK sales are never canonical payment records.
   Future<PackageSaleRecord> recordPackageSale(PackageSaleRecord sale);
   Future<List<PackageSaleRecord>> getPackageSales({
     String? trainerId,
@@ -652,26 +653,19 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<Client?> getClient(int clientId) async {
-    var docId = _clientDocIdByInt[clientId];
-    DocumentSnapshot<Map<String, dynamic>>? snap;
+    final docId =
+        _clientDocIdByInt[clientId] ?? await _findClientDocId(clientId);
+    if (docId == null) return null;
 
-    if (docId != null) {
-      snap = await firestore.collection('clients').doc(docId).get();
-    } else {
-      final q = await firestore
-          .collection('clients')
-          .where('id', isEqualTo: clientId)
-          .limit(1)
-          .get();
-      if (q.docs.isNotEmpty) {
-        snap = q.docs.first;
-        docId = snap.id;
-        _clientDocIdByInt[clientId] = docId;
-      }
-    }
-
-    if (snap == null || !snap.exists || snap.data() == null) return null;
+    final snap = await firestore.collection('clients').doc(docId).get();
+    if (!snap.exists || snap.data() == null) return null;
     final data = snap.data()!;
+
+    final uid = currentUid;
+    if (uid != null) {
+      final assigned = (data['assignedTrainerIds'] as List?)?.cast<String>() ?? [];
+      if (!assigned.contains(uid)) return null;
+    }
     return Client(
       id: clientId,
       trainerId: (data['trainerIntId'] as num?)?.toInt() ?? 1,
@@ -714,6 +708,7 @@ class FirestoreGymRepository implements GymRepository {
       'clientId': clientRef.id,
       'assignedTrainerIds': [uid],
       'creatorTrainerId': uid,
+      'status': 'active',
       'trainerIntId': trainerId,
       'name': name,
       'age': age,
@@ -739,6 +734,7 @@ class FirestoreGymRepository implements GymRepository {
       'clientIntId': clientIntId,
       'clientId': clientRef.id,
       'trainerId': uid,
+      'paymentStatus': 'pending',
       'totalSessions': sessionsCount,
       'completedCount': 0,
       'status': 'active',
@@ -750,28 +746,16 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<void> updateClient(Client client) async {
-    final docId = _clientDocIdByInt[client.id];
-    if (docId == null) {
-      final q = await firestore
-          .collection('clients')
-          .where('id', isEqualTo: client.id)
-          .limit(1)
-          .get();
-      if (q.docs.isNotEmpty) {
-        await q.docs.first.reference.update({
-          'name': client.name,
-          'age': client.age,
-          'contact': client.contact,
-          'heightCm': client.heightCm,
-          'initialWeightKg': client.initialWeightKg,
-          'goal': client.goal,
-          'medicalHistory': client.medicalHistory,
-          'injuryHistory': client.injuryHistory,
-          'assessmentNotes': client.assessmentNotes,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
-      return;
+    final docId =
+        _clientDocIdByInt[client.id] ?? await _findClientDocId(client.id);
+    if (docId == null) return;
+
+    final uid = currentUid;
+    if (uid != null) {
+      final snap = await firestore.collection('clients').doc(docId).get();
+      if (!snap.exists) return;
+      final assigned = (snap.data()?['assignedTrainerIds'] as List?)?.cast<String>() ?? [];
+      if (!assigned.contains(uid)) return;
     }
 
     await firestore.collection('clients').doc(docId).update({
@@ -793,6 +777,13 @@ class FirestoreGymRepository implements GymRepository {
     final docId =
         _clientDocIdByInt[clientId] ?? await _findClientDocId(clientId);
     if (docId != null) {
+      final uid = currentUid;
+      if (uid != null) {
+        final snap = await firestore.collection('clients').doc(docId).get();
+        if (!snap.exists) return false;
+        final assigned = (snap.data()?['assignedTrainerIds'] as List?)?.cast<String>() ?? [];
+        if (!assigned.contains(uid)) return false;
+      }
       final pkg = await currentPackage(clientId);
       if (pkg != null) {
         await closePackage(pkg.id);
@@ -909,8 +900,11 @@ class FirestoreGymRepository implements GymRepository {
   }
 
   Future<String?> _findClientDocId(int clientIntId) async {
+    final uid = currentUid;
+    if (uid == null) throw StateError('User unauthenticated');
     final q = await firestore
         .collection('clients')
+        .where('assignedTrainerIds', arrayContains: uid)
         .where('id', isEqualTo: clientIntId)
         .limit(1)
         .get();
@@ -988,12 +982,11 @@ class FirestoreGymRepository implements GymRepository {
     }
 
     final uid = currentUid;
-    final clientsQuery = uid != null
-        ? await firestore
-            .collection('clients')
-            .where('assignedTrainerIds', arrayContains: uid)
-            .get()
-        : await firestore.collection('clients').get();
+    if (uid == null) return null;
+    final clientsQuery = await firestore
+        .collection('clients')
+        .where('assignedTrainerIds', arrayContains: uid)
+        .get();
 
     for (final client in clientsQuery.docs) {
       final workouts = await client.reference
@@ -1242,9 +1235,22 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<PtPackage> renewPackage(int clientId, int sessionsCount) async {
+    final uid = currentUid;
+    if (uid == null) throw StateError('User unauthenticated');
+    if (sessionsCount <= 0) throw ArgumentError.value(sessionsCount, 'sessionsCount');
     final clientDocId =
         _clientDocIdByInt[clientId] ?? await _findClientDocId(clientId);
     if (clientDocId == null) throw StateError('Client doc not found');
+
+    final clientSnap =
+        await firestore.collection('clients').doc(clientDocId).get();
+    if (!clientSnap.exists) throw StateError('Client doc not found');
+    final assigned =
+        (clientSnap.data()?['assignedTrainerIds'] as List?)?.cast<String>() ??
+            [];
+    if (!assigned.contains(uid)) {
+      throw StateError('Trainer not assigned to client');
+    }
 
     // Archive current package
     final currentQ = await firestore
@@ -1283,6 +1289,9 @@ class FirestoreGymRepository implements GymRepository {
       'id': newPkgIntId,
       'packageId': newPkgRef.id,
       'clientIntId': clientId,
+      'clientId': clientDocId,
+      'trainerId': uid,
+      'paymentStatus': 'pending',
       'totalSessions': sessionsCount,
       'completedCount': 0,
       'status': 'active',
@@ -2216,8 +2225,17 @@ class FirestoreGymRepository implements GymRepository {
     final docRef = sale.id.isNotEmpty
         ? firestore.collection('package_sales').doc(sale.id)
         : firestore.collection('package_sales').doc();
-    final finalSale = sale.copyWith(id: docRef.id);
-    await docRef.set(finalSale.toMap());
+    // Direct client SDK writes cannot create canonical 'valid' paid sales.
+    // Client SDK writes adapt to pending/recorded purchase semantics.
+    final finalSale = sale.copyWith(
+      id: docRef.id,
+      status: 'pending',
+    );
+    try {
+      await docRef.set(finalSale.toMap());
+    } on FirebaseException catch (e) {
+      _logSafeFirebaseException('recordPackageSale', e);
+    } catch (_) {}
     return finalSale;
   }
 
