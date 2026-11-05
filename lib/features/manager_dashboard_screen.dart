@@ -668,15 +668,12 @@ class _ManagerDashboardScreenState
   }
 
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
-  Color get _textPrimary => _isDark ? Colors.white : const Color(0xFF0F172A);
-  Color get _textSecondary =>
-      _isDark ? const Color(0xFFCBD5E1) : const Color(0xFF334155);
-  Color get _textMuted =>
-      _isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
-  Color get _containerBg =>
-      _isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
-  Color get _containerBorder =>
-      _isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+  ColorScheme get _colors => Theme.of(context).colorScheme;
+  Color get _textPrimary => _colors.onSurface;
+  Color get _textSecondary => _colors.onSurfaceVariant;
+  Color get _textMuted => _colors.onSurfaceVariant;
+  Color get _containerBg => _colors.surfaceContainerLow;
+  Color get _containerBorder => _colors.outlineVariant;
 
   @override
   Widget build(BuildContext context) {
@@ -787,8 +784,8 @@ class _ManagerDashboardScreenState
           children: [
             Row(
               mainAxisSize: MainAxisSize.min,
-              children: const [
-                Icon(Icons.tune, size: 20, color: Color(0xFF0088FF)),
+              children: [
+                Icon(Icons.tune, size: 20, color: _colors.primary),
                 SizedBox(width: 8),
                 Text(
                   'Periode:',
@@ -850,12 +847,12 @@ class _ManagerDashboardScreenState
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
         child: Column(
           children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+            Icon(Icons.error_outline, size: 48, color: _colors.error),
             const SizedBox(height: 12),
             Text(
               _errorMessage ?? 'Terjadi kesalahan saat memuat data',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: Colors.black87),
+              style: TextStyle(fontSize: 14, color: _textPrimary),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
@@ -875,28 +872,28 @@ class _ManagerDashboardScreenState
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
+        color: _colors.tertiaryContainer,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFF59E0B), width: 1.2),
+        border: Border.all(color: _colors.tertiary, width: 1.2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.warning_amber_rounded,
-                color: Color(0xFFD97706),
+                color: _colors.onTertiaryContainer,
                 size: 24,
               ),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Proyeksi Dashboard Belum Tersedia',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF92400E),
+                    color: _colors.onTertiaryContainer,
                   ),
                 ),
               ),
@@ -905,19 +902,19 @@ class _ManagerDashboardScreenState
           const SizedBox(height: 8),
           Text(
             'Tercatat $activePt Personal Trainer aktif di sistem. Data agregat penjualan, capaian target, dan rincian klien untuk periode Q$_selectedQuarter $_selectedYear belum disinkronkan oleh Admin ke read-model terisolasi.',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: Color(0xFF78350F),
+              color: _colors.onTertiaryContainer,
               height: 1.4,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Peringatan: Nilai di bawah menunjukkan status pending sinkronisasi dan bukan nol penjualan riil. Tidak ada data dummy yang digunakan.',
             style: TextStyle(
               fontSize: 11,
               fontStyle: FontStyle.italic,
-              color: Color(0xFFB45309),
+              color: _colors.onTertiaryContainer,
             ),
           ),
           const SizedBox(height: 12),
@@ -928,8 +925,8 @@ class _ManagerDashboardScreenState
               icon: const Icon(Icons.refresh, size: 16),
               label: const Text('Periksa Ulang'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF92400E),
-                side: const BorderSide(color: Color(0xFFD97706)),
+                foregroundColor: _colors.onTertiaryContainer,
+                side: BorderSide(color: _colors.onTertiaryContainer),
                 visualDensity: VisualDensity.compact,
               ),
             ),
@@ -951,7 +948,7 @@ class _ManagerDashboardScreenState
               title: 'Total PT Aktif',
               value: '${data.totalActivePt}',
               icon: Icons.fitness_center,
-              iconColor: const Color(0xFF0088FF),
+              iconColor: _colors.primary,
               width: cardWidth,
             ),
             _buildKpiCard(
@@ -960,7 +957,7 @@ class _ManagerDashboardScreenState
                   ? 'Menunggu sinkronisasi'
                   : '${data.totalActiveClients}',
               icon: Icons.people_alt_outlined,
-              iconColor: const Color(0xFF0F8780),
+              iconColor: _colors.secondary,
               width: cardWidth,
             ),
             _buildKpiCard(
@@ -969,7 +966,7 @@ class _ManagerDashboardScreenState
                   ? 'Menunggu sinkronisasi'
                   : '${data.totalPackagesSold}',
               icon: Icons.inventory_2_outlined,
-              iconColor: const Color(0xFFF59E0B),
+              iconColor: _colors.tertiary,
               width: cardWidth,
             ),
             _buildKpiCard(
@@ -979,7 +976,7 @@ class _ManagerDashboardScreenState
                   ? 'Menunggu sinkronisasi'
                   : formatRupiah(data.totalSales),
               icon: Icons.payments_outlined,
-              iconColor: const Color(0xFF10B981),
+              iconColor: _colors.secondary,
               width: cardWidth,
             ),
           ],
@@ -1000,14 +997,16 @@ class _ManagerDashboardScreenState
       width: width,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
+        border: Border.all(color: _containerBorder),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x08000000),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.black26
+                : const Color(0x08000000),
             blurRadius: 4,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -1030,18 +1029,15 @@ class _ManagerDashboardScreenState
           const SizedBox(height: 10),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              color: _textMuted,
             ),
           ),
           if (subtitle != null) ...[
             const SizedBox(height: 2),
-            Text(
-              subtitle,
-              style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
-            ),
+            Text(subtitle, style: TextStyle(fontSize: 10, color: _textMuted)),
           ],
           const SizedBox(height: 4),
           FittedBox(
@@ -1126,8 +1122,8 @@ class _ManagerDashboardScreenState
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
                     color: achievementPercentage >= 100
-                        ? Colors.green
-                        : const Color(0xFF0088FF),
+                        ? _colors.secondary
+                        : _colors.primary,
                   ),
                 ),
               ],
@@ -1141,8 +1137,8 @@ class _ManagerDashboardScreenState
                 backgroundColor: _containerBorder,
                 valueColor: AlwaysStoppedAnimation<Color>(
                   achievementPercentage >= 100
-                      ? Colors.green
-                      : const Color(0xFF0088FF),
+                      ? _colors.secondary
+                      : _colors.primary,
                 ),
               ),
             ),
@@ -1242,10 +1238,7 @@ class _ManagerDashboardScreenState
                             child: Text(
                               '${juta.toStringAsFixed(1)}jt',
                               textAlign: TextAlign.end,
-                              style: TextStyle(
-                                fontSize: 9,
-                                color: _textMuted,
-                              ),
+                              style: TextStyle(fontSize: 9, color: _textMuted),
                             ),
                           );
                         },
@@ -1279,7 +1272,7 @@ class _ManagerDashboardScreenState
                     show: true,
                     drawVerticalLine: false,
                     getDrawingHorizontalLine: (val) => FlLine(
-                      color: _isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+                      color: _isDark ? Colors.white12 : _containerBorder,
                       strokeWidth: 1,
                     ),
                   ),
@@ -1293,7 +1286,7 @@ class _ManagerDashboardScreenState
                       barRods: [
                         BarChartRodData(
                           toY: amount,
-                          color: const Color(0xFF0088FF),
+                          color: _colors.primary,
                           width: 28,
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(6),
@@ -1350,8 +1343,8 @@ class _ManagerDashboardScreenState
                             InitialAvatar(
                               name: pt.name,
                               radius: 20,
-                              backgroundColor: const Color(0xFFD4ECFF),
-                              foregroundColor: const Color(0xFF0088FF),
+                              backgroundColor: _colors.primaryContainer,
+                              foregroundColor: _colors.primary,
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -1377,7 +1370,7 @@ class _ManagerDashboardScreenState
                                         ),
                                         decoration: BoxDecoration(
                                           color: pt.status == 'active'
-                                              ? const Color(0xFFDCFCE7)
+                                              ? _colors.secondaryContainer
                                               : _containerBg,
                                           borderRadius: BorderRadius.circular(
                                             4,
@@ -1391,7 +1384,7 @@ class _ManagerDashboardScreenState
                                             fontSize: 10,
                                             fontWeight: FontWeight.bold,
                                             color: pt.status == 'active'
-                                                ? const Color(0xFF166534)
+                                                ? _colors.onSecondaryContainer
                                                 : _textMuted,
                                           ),
                                         ),
@@ -1409,10 +1402,10 @@ class _ManagerDashboardScreenState
                                   const SizedBox(height: 4),
                                   Text(
                                     formatRupiah(pt.totalSales),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
-                                      color: Color(0xFF10B981),
+                                      color: _colors.secondary,
                                     ),
                                   ),
                                 ],
@@ -1466,8 +1459,8 @@ class _ManagerDashboardScreenState
                               ),
                               decoration: BoxDecoration(
                                 color: pt.isTargetAchieved
-                                    ? const Color(0xFFDCFCE7)
-                                    : const Color(0xFFFEF3C7),
+                                    ? _colors.secondaryContainer
+                                    : _colors.tertiaryContainer,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
@@ -1478,8 +1471,8 @@ class _ManagerDashboardScreenState
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                   color: pt.isTargetAchieved
-                                      ? const Color(0xFF166534)
-                                      : const Color(0xFFB45309),
+                                      ? _colors.onSecondaryContainer
+                                      : _colors.onTertiaryContainer,
                                 ),
                               ),
                             ),
@@ -1494,11 +1487,11 @@ class _ManagerDashboardScreenState
                               1.0,
                             ),
                             minHeight: 6,
-                            backgroundColor: const Color(0xFFE2E8F0),
+                            backgroundColor: _containerBorder,
                             valueColor: AlwaysStoppedAnimation<Color>(
                               pt.isTargetAchieved
-                                  ? const Color(0xFF10B981)
-                                  : const Color(0xFF0088FF),
+                                  ? _colors.secondary
+                                  : _colors.primary,
                             ),
                           ),
                         ),
@@ -1511,10 +1504,7 @@ class _ManagerDashboardScreenState
                           children: [
                             Text(
                               'Target: ${formatRupiah(pt.quarterlyTarget)}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF64748B),
-                              ),
+                              style: TextStyle(fontSize: 11, color: _textMuted),
                             ),
                             TextButton.icon(
                               style: TextButton.styleFrom(
@@ -1523,7 +1513,7 @@ class _ManagerDashboardScreenState
                                   horizontal: 6,
                                   vertical: 2,
                                 ),
-                                foregroundColor: const Color(0xFF0088FF),
+                                foregroundColor: _colors.primary,
                               ),
                               icon: const Icon(Icons.arrow_forward, size: 14),
                               label: const Text(
@@ -1559,9 +1549,11 @@ class _ManagerDashboardScreenState
             maxChildSize: 1,
             builder: (context, scrollController) {
               return Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
                 ),
                 child: Column(
                   children: [
@@ -1570,7 +1562,7 @@ class _ManagerDashboardScreenState
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFCBD5E1),
+                        color: _containerBorder,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1584,8 +1576,8 @@ class _ManagerDashboardScreenState
                           InitialAvatar(
                             name: pt.name,
                             radius: 24,
-                            backgroundColor: const Color(0xFFD4ECFF),
-                            foregroundColor: const Color(0xFF0088FF),
+                            backgroundColor: _colors.primaryContainer,
+                            foregroundColor: _colors.primary,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -1656,8 +1648,8 @@ class _ManagerDashboardScreenState
                                         ),
                                         decoration: BoxDecoration(
                                           color: pt.isTargetAchieved
-                                              ? const Color(0xFFDCFCE7)
-                                              : const Color(0xFFFEF3C7),
+                                              ? _colors.secondaryContainer
+                                              : _colors.tertiaryContainer,
                                           borderRadius: BorderRadius.circular(
                                             6,
                                           ),
@@ -1670,8 +1662,8 @@ class _ManagerDashboardScreenState
                                             fontSize: 11,
                                             fontWeight: FontWeight.bold,
                                             color: pt.isTargetAchieved
-                                                ? const Color(0xFF166534)
-                                                : const Color(0xFFB45309),
+                                                ? _colors.onSecondaryContainer
+                                                : _colors.onTertiaryContainer,
                                           ),
                                         ),
                                       ),
@@ -1698,9 +1690,9 @@ class _ManagerDashboardScreenState
                                     const SizedBox(height: 2),
                                     Text(
                                       'Sisa Target: ${formatRupiah(pt.remainingAmount)}',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 12,
-                                        color: Color(0xFFF59E0B),
+                                        color: _colors.tertiary,
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
@@ -1796,9 +1788,7 @@ class _ManagerDashboardScreenState
                                   elevation: 0.5,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(10),
-                                    side: const BorderSide(
-                                      color: Color(0xFFE2E8F0),
-                                    ),
+                                    side: BorderSide(color: _containerBorder),
                                   ),
                                   child: ListTile(
                                     dense: true,
@@ -1811,15 +1801,15 @@ class _ManagerDashboardScreenState
                                     ),
                                     subtitle: Text(
                                       '${client.packageName} • ${client.attendedSessions} dari ${client.totalSessions} sesi dihadiri',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 11,
-                                        color: Color(0xFF64748B),
+                                        color: _textMuted,
                                       ),
                                     ),
-                                    trailing: const Icon(
+                                    trailing: Icon(
                                       Icons.chevron_right,
                                       size: 18,
-                                      color: Color(0xFF0088FF),
+                                      color: _colors.primary,
                                     ),
                                     onTap: () => _showClientAttendanceDetail(
                                       context,
@@ -1855,7 +1845,7 @@ class _ManagerDashboardScreenState
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.event_available, color: Color(0xFF0088FF)),
+                    Icon(Icons.event_available, color: _colors.primary),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
@@ -1863,9 +1853,9 @@ class _ManagerDashboardScreenState
                         children: [
                           Text(
                             'Read-Only • ${client.name}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF64748B),
+                              color: _textMuted,
                               fontWeight: FontWeight.normal,
                             ),
                           ),
@@ -1923,10 +1913,10 @@ class _ManagerDashboardScreenState
                                 ),
                                 Text(
                                   '${client.attendedSessions} Sesi',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF10B981),
+                                    color: _colors.secondary,
                                   ),
                                 ),
                               ],
@@ -1944,10 +1934,10 @@ class _ManagerDashboardScreenState
                                 ),
                                 Text(
                                   '${client.remainingSessions} Sesi',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF0088FF),
+                                    color: _colors.primary,
                                   ),
                                 ),
                               ],
@@ -1971,10 +1961,7 @@ class _ManagerDashboardScreenState
                           alignment: Alignment.center,
                           child: Text(
                             'Belum ada jadwal sesi tercatat.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _textMuted,
-                            ),
+                            style: TextStyle(fontSize: 12, color: _textMuted),
                           ),
                         )
                       else
@@ -1992,9 +1979,7 @@ class _ManagerDashboardScreenState
                                   ? const Color(0xFF0F172A)
                                   : Colors.white,
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: _containerBorder,
-                              ),
+                              border: Border.all(color: _containerBorder),
                             ),
                             child: Row(
                               children: [
@@ -2025,9 +2010,9 @@ class _ManagerDashboardScreenState
                                       ),
                                       Text(
                                         dtStr,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 10,
-                                          color: Color(0xFF64748B),
+                                          color: _textMuted,
                                         ),
                                       ),
                                     ],
@@ -2058,12 +2043,12 @@ class _ManagerDashboardScreenState
                           );
                         }),
                       const SizedBox(height: 10),
-                      const Text(
+                      Text(
                         'Catatan Privasi: Asesmen kesehatan, catatan latihan rahasia, dan tanda tangan klien tidak ditampilkan.',
                         style: TextStyle(
                           fontSize: 10,
                           fontStyle: FontStyle.italic,
-                          color: Color(0xFF94A3B8),
+                          color: _textMuted,
                         ),
                       ),
                     ],
@@ -2091,7 +2076,7 @@ class _ManagerDashboardScreenState
       ),
       child: Column(
         children: [
-          const Icon(Icons.bar_chart_outlined, size: 48, color: Color(0xFF94A3B8)),
+          Icon(Icons.bar_chart_outlined, size: 48, color: _textMuted),
           const SizedBox(height: 8),
           Text(
             'Belum ada data kinerja PT pada periode ini.',

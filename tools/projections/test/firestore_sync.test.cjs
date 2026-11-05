@@ -148,15 +148,14 @@ describe('Firestore Source Fetching & Projection Sync', () => {
     assert.equal(mockDb.commitLog.length, 0); // NO WRITES!
 
     // APPLY: should commit writes
-    const applyResult = await runProjectionJob(mockDb, {
+    await assert.rejects(runProjectionJob(mockDb, {
       project: 'mbois-gym',
       year: 2026,
       quarter: 1,
       dryRun: false,
       apply: true,
-    });
+    }), /Legacy apply disabled/);
 
-    assert.equal(applyResult.dryRun, false);
-    assert.equal(mockDb.commitLog.length > 0, true);
+    assert.equal(mockDb.commitLog.length, 0); // production writer is deliberately gated.
   });
 });

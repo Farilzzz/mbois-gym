@@ -109,22 +109,25 @@ function parseArgs(args = []) {
 function parseDateInTimezone(dateInput, timezone = DEFAULT_TIMEZONE) {
   let jsDate;
 
-  if (!dateInput) {
-    jsDate = new Date();
-  } else if (dateInput instanceof Date) {
+  if (dateInput === undefined || dateInput === null || dateInput === '') {
+    throw new Error(`Tanggal tidak valid: ${dateInput}`);
+  }
+  if (dateInput instanceof Date) {
     jsDate = dateInput;
   } else if (typeof dateInput.toDate === 'function') {
     jsDate = dateInput.toDate();
   } else if (typeof dateInput === 'object' && typeof dateInput.seconds === 'number') {
     jsDate = new Date(dateInput.seconds * 1000 + (dateInput.nanoseconds || 0) / 1000000);
-  } else if (typeof dateInput === 'string' || typeof dateInput === 'number') {
-    jsDate = new Date(dateInput);
-  } else {
-    jsDate = new Date();
-  }
+  } else if (typeof dateInput === 'string') {
+      const match = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(dateInput);
+      if (!match || Number(match[2]) < 1 || Number(match[2]) > 12 || Number(match[3]) < 1 || Number(match[3]) > new Date(Date.UTC(Number(match[1]),Number(match[2]),0)).getUTCDate()) throw new Error('Invalid timestamp');
+      jsDate = new Date(dateInput);
+    } else {
+      throw new Error('Invalid timestamp');
+    }
 
   if (isNaN(jsDate.getTime())) {
-    throw new FormatException(`Tanggal tidak valid: ${dateInput}`);
+    throw new Error(`Tanggal tidak valid: ${dateInput}`);
   }
 
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -219,21 +222,31 @@ function getClientLifecycle(client) {
  * Check if a package sale is valid (not cancelled/refunded/void)
  * Also excludes sales whose client/package registration was cancelled without completed sessions.
  */
-function isValidSale(sale, clientsMap = new Map()) {
-  if (!sale) return false;
-  const status = String(sale.status || 'valid').toLowerCase().trim();
-  if (status === 'cancelled' || status === 'refunded' || status === 'void') {
+function isValidSale(sale, clientsMap = new Map(), trainersMap = new Map()) {
+  if (!sale || typeof sale !== 'object') return false;
+  if (String(sale.status || '').toLowerCase().trim() !== 'valid') return false;
+  const price = sale.price;
+  if (typeof price !== 'number' || !Number.isFinite(price) || price < 0) return false;
+  if (!sale.timestamp) return false;
+  try { parseDateInTimezone(sale.timestamp); } catch (_) { return false; }
+
+  if (trainersMap.size > 0 && (!sale.trainerId || !trainersMap.has(String(sale.trainerId)))) {
+    return false;
+  }
+  if (clientsMap.size > 0 && (!sale.clientId || !clientsMap.has(String(sale.clientId)))) {
     return false;
   }
 
-  const clientId = sale.clientId;
-  if (clientId && clientsMap && clientsMap.has(String(clientId))) {
-    const client = clientsMap.get(String(clientId));
+  if (sale.clientId && clientsMap.has(String(sale.clientId))) {
+    const client = clientsMap.get(String(sale.clientId));
+    const assigned = Array.isArray(client.assignedTrainerIds) ? client.assignedTrainerIds.map(String) : [];
+    if (assigned.length !== 1 || (sale.trainerId && assigned[0] !== String(sale.trainerId))) {
+      return false;
+    }
     const lifecycle = getClientLifecycle(client);
     if (lifecycle === 'cancelled' || lifecycle === 'discontinued') {
       const packages = Array.isArray(client.packages) ? client.packages : [];
-      const hasCompleted = packages.some(p => (Number(p.completedCount) || 0) > 0);
-      if (!hasCompleted) {
+      if (!packages.some(p => (Number(p.completedCount) || 0) > 0)) {
         return false;
       }
     }
@@ -245,9 +258,18 @@ function isValidSale(sale, clientsMap = new Map()) {
 /**
  * Deduplicate package sales by ID, retaining only valid records
  */
-function deduplicateSales(sales = [], clientsMap = new Map()) {
+function deduplicateSales(sales = [], clientsMap = new Map(), trainersMap = new Map()) {
   const seen = new Set();
-  const validList = [];
+    const conflicts = new Set();
+    const fingerprints = new Map();
+    for (const s of sales) {
+      if (!s) continue;
+      const id = s.id || s.saleId;
+      const value = JSON.stringify(s);
+      if (fingerprints.has(id) && fingerprints.get(id) !== value) conflicts.add(id);
+      fingerprints.set(id,value);
+    }
+    const validList = [];
 
   for (const sale of sales) {
     if (!sale) continue;
@@ -259,7 +281,7 @@ function deduplicateSales(sales = [], clientsMap = new Map()) {
     }
     seen.add(id);
 
-    if (isValidSale(sale, clientsMap)) {
+    if (!conflicts.has(id) && isValidSale(sale, clientsMap, trainersMap)) {
       validList.push(sale);
     }
   }
@@ -291,7 +313,11 @@ function buildManagerDashboardProjection(sourceData, options = {}) {
 
   // 2. Deduplicate and filter package sales for target quarter & year
   const rawSales = sourceData.packageSales || [];
-  const dedupedSales = deduplicateSales(rawSales, clientsMap);
+  const trainersMap = new Map(trainerUsers.map(t => [t.id,t]));
+  const dedupedSales = deduplicateSales(rawSales, clientsMap, trainersMap).filter(s =>
+    clientsMap.has(String(s.clientId)) && trainersMap.has(String(s.trainerId)));
+  // Existing client-authored ledger is not proof of payment. Applying it requires
+  // an independent administrative verification/migration, not a client status.
 
   const quarterSales = [];
   for (const sale of dedupedSales) {
@@ -324,6 +350,7 @@ function buildManagerDashboardProjection(sourceData, options = {}) {
 
   for (const client of rawClients) {
     if (!client || !client.id) continue;
+    if (!Array.isArray(client.assignedTrainerIds) || client.assignedTrainerIds.length !== 1 || !trainersMap.has(client.assignedTrainerIds[0])) continue;
     const clientAssignedTrainers = Array.isArray(client.assignedTrainerIds)
       ? client.assignedTrainerIds
       : [];
@@ -539,15 +566,17 @@ async function fetchSourceDataFromFirestore(db) {
   // 1. Fetch Users
   const usersSnap = await db.collection('users').get();
   const users = usersSnap.docs.map(d => ({
-    id: d.id,
     ...d.data(),
+        legacyId: d.data().id ?? null,
+        id: d.id,
   }));
 
   // 2. Fetch Package Sales
   const salesSnap = await db.collection('package_sales').get();
   const packageSales = salesSnap.docs.map(d => ({
-    id: d.id,
     ...d.data(),
+        legacyId: d.data().id ?? null,
+        id: d.id,
   }));
 
   // 3. Fetch Clients and subcollections (packages & sessions)
@@ -556,43 +585,52 @@ async function fetchSourceDataFromFirestore(db) {
 
   for (const clientDoc of clientsSnap.docs) {
     const clientData = {
-      id: clientDoc.id,
       ...clientDoc.data(),
+            legacyId: clientDoc.data().id ?? null,
+            id: clientDoc.id,
     };
 
     // Subcollections reference helper
     const ref = clientDoc.ref || clientDoc.reference || (db.collection('clients').doc(clientDoc.id));
 
     // Fetch packages subcollection
-    try {
-      const pkgSnap = await ref.collection('packages').get();
-      clientData.packages = pkgSnap.docs.map(p => ({
-        id: p.id,
-        ...p.data(),
-      }));
-    } catch (_) {
-      clientData.packages = [];
-    }
+    const pkgSnap = await ref.collection('packages').get();
+    clientData.packages = pkgSnap.docs.map(p => ({
+      ...p.data(),
+      legacyId: p.data().id ?? null,
+      id: p.id,
+    }));
 
     // Fetch sessions subcollection
-    try {
-      const sessSnap = await ref.collection('sessions').get();
-      clientData.sessions = sessSnap.docs.map(s => ({
-        id: s.id,
-        ...s.data(),
-      }));
-    } catch (_) {
-      clientData.sessions = [];
-    }
+    const sessSnap = await ref.collection('sessions').get();
+    clientData.sessions = sessSnap.docs.map(s => ({
+      ...s.data(),
+      legacyId: s.data().id ?? null,
+      id: s.id,
+    }));
 
     clients.push(clientData);
   }
 
-  return {
-    users,
-    packageSales,
-    clients,
-  };
+  function legacyIndex(items) {
+    const index = new Map();
+    for (const item of items) {
+      if (item.legacyId === null) continue;
+      const key = String(item.legacyId);
+      if (index.has(key)) index.set(key, null); // duplicate legacy ID: refuse ambiguity
+      else index.set(key, item.id);
+    }
+    return index;
+  }
+  const userByLegacy = legacyIndex(users);
+  const clientByLegacy = legacyIndex(clients);
+  for (const sale of packageSales) {
+    const clientKey = String(sale.clientId ?? '');
+    const trainerKey = String(sale.trainerId ?? '');
+    sale.clientId = clientByLegacy.has(clientKey) ? clientByLegacy.get(clientKey) : clientKey;
+    sale.trainerId = userByLegacy.has(trainerKey) ? userByLegacy.get(trainerKey) : trainerKey;
+  }
+  return { users, packageSales, clients };
 }
 
 const FIRESTORE_MAX_BATCH_SIZE = 500;
@@ -635,6 +673,7 @@ async function runProjectionJob(db, options = {}) {
   const projection = buildManagerDashboardProjection(sourceData, parsed);
 
   if (parsed.apply && !parsed.dryRun) {
+    throw new Error('Legacy apply disabled: use reconcile.cjs with emulator and exclusive backup. Production financial verification is required.');
     const commitResult = await commitProjectionToFirestore(db, projection.writes);
     return {
       ...projection,
