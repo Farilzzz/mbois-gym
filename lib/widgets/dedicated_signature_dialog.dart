@@ -621,11 +621,7 @@ class SignaturePreviewCard extends StatelessWidget {
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.check_circle,
-                        size: 12,
-                        color: Colors.green,
-                      ),
+                      Icon(Icons.check_circle, size: 12, color: Colors.green),
                       SizedBox(width: 4),
                       Text(
                         'Terverifikasi',

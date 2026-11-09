@@ -120,6 +120,10 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
     await assertFails(setDoc(doc(dbFor('pt1'), 'clients/c_new_2'), { name: 'Forged Assignment', assignedTrainerIds: ['pt2'] }));
     await assertFails(setDoc(doc(dbFor('inactive'), 'clients/c_new_3'), { name: 'Inactive Creator', assignedTrainerIds: ['inactive'] }));
   });
+  it('client root documents cannot be deleted by any client SDK role', async () => {
+    await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' }));
+    for (const uid of ['pt1', 'manager']) await assertFails(deleteDoc(doc(dbFor(uid), 'clients/c1')));
+  });
   it('assigned trainer can update client fields, but outsiders cannot', async () => {
     await assertSucceeds(updateDoc(doc(dbFor('pt1'), 'clients/c1'), { name: 'Updated Client 1', age: 30 }));
     await assertFails(updateDoc(doc(dbFor('pt2'), 'clients/c1'), { name: 'Intruder Update' }));
@@ -159,10 +163,11 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
       await assertFails(deleteDoc(doc(db, path)));
     });
   }
-  it('manager reads trainer profiles and operational clients; trainer cannot read others', async () => {
+  it('manager cannot read private trainer profiles or roster; reads own profile only', async () => {
     await env.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'users/manager'), { role: 'manager', status: 'active' }));
-    await assertSucceeds(read('manager', 'users/pt1'));
-    await assertSucceeds(getDocs(collection(dbFor('manager'), 'users')));
+    await assertSucceeds(read('manager', 'users/manager'));
+    await assertFails(read('manager', 'users/pt1'));
+    await assertFails(getDocs(collection(dbFor('manager'), 'users')));
     await assertFails(read('manager', 'clients/c2'));
     await assertFails(read('manager', 'clients/c2/sessions/old'));
     await assertFails(read('pt1', 'users/pt2'));
@@ -283,6 +288,9 @@ describe('Mbois Gym read-only pilot rules (emulator only)', function () {
     for (const path of ['pt_packages/old', 'workout_logs/old', 'unknown/doc', 'clients/c1/sessions/old/secret/data']) await assertFails(read('pt1', path));
     await assertFails(getDocs(collectionGroup(dbFor('pt1'), 'sessions')));
   });
+
+  require('./lifecycle.cjs')({ dbFor, read, adminUpdate, getEnv: () => env });
+  require('./operations.cjs')({ dbFor, getEnv: () => env });
 
   describe('Atomic completion transaction and getAfter coupled rules (real emulator)', () => {
     const validClientStrokes = [

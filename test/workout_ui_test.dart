@@ -8,9 +8,7 @@ void main() {
     'LoginScreen does not render public registration or legacy archive entrypoints',
     (tester) async {
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(home: LoginScreen()),
-        ),
+        const ProviderScope(child: MaterialApp(home: LoginScreen())),
       );
       await tester.pumpAndSettle();
 

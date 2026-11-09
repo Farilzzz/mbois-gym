@@ -1,0 +1,10 @@
+'use strict';
+const {test}=require('node:test');const a=require('node:assert/strict');const {build}=require('./engine.cjs');
+const fixture=()=>({users:[{id:'t',role:'trainer'}],clients:[{id:'c',assignedTrainerIds:['t'],packages:[{id:'p',legacyId:7,totalSessions:4,status:'active'}],sessions:[]}],packageSales:[{id:'sale',clientId:'c',trainerId:'t',packageId:'p',transactionId:'tx',paymentEvidenceId:'receipt',verifiedBy:'admin',verifiedAt:'2026-01-01',timestamp:'2026-01-01',status:'paid',paymentStatus:'paid',price:500000,totalSessions:4}]});
+const run=s=>build(s,['2026-Q1']);
+test('actual Flutter doc link wins over numeric legacy identifier',()=>{const s=fixture();s.clients[0].sessions=[{id:'session',packageDocId:'p',packageIntId:99,status:'completed'}];const r=run(s);a.equal(r.writes.find(w=>w.path.endsWith('/clients/c')).data.attendedSessions,1);a.equal(r.writes.at(-1).data.packageId,'p');});
+test('legacy numeric link resolves only unique package, never overrides explicit missing doc link',()=>{const s=fixture();s.clients[0].sessions=[{id:'a',packageIntId:7,status:'completed'},{id:'b',packageDocId:'missing',packageIntId:7,status:'completed'}];let c=run(s).writes.find(w=>w.path.endsWith('/clients/c')).data;a.equal(c.attendedSessions,1);a.equal(c.unresolvedSessionCount,1);});
+test('historical verified snapshot is not repriced against current catalog',()=>{const s=fixture();s.packageSales[0].price=450000;a.equal(run(s).writes[0].data.totalSales,450000);});
+test('refund amount without independent evidence is quarantined',()=>{const s=fixture();s.packageSales[0].refundAmount=100000;a.equal(run(s).audit.unresolved.length,1);Object.assign(s.packageSales[0],{refundEvidenceId:'refund',refundVerifiedBy:'admin',refundVerifiedAt:'2026-02-01'});a.equal(run(s).writes[0].data.totalSales,400000);});
+test('refunded label without evidence does not silently erase a paid ledger',()=>{const s=fixture();s.packageSales[0].status='refunded';a.equal(run(s).audit.unresolved.length,1);});
+module.exports={fixture};

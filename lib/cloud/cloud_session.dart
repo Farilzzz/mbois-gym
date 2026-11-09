@@ -1,7 +1,8 @@
 import 'dart:async';
 
 enum CloudRole {
-  trainer, manager;
+  trainer,
+  manager;
 
   static CloudRole? parse(Object? value) => switch (value) {
     'trainer' => CloudRole.trainer,

@@ -17,10 +17,7 @@ void main() {
       await tester.pumpWidget(
         const ProviderScope(
           child: MaterialApp(
-            home: ManagerDashboardScreen(
-              initialYear: 2026,
-              initialQuarter: 1,
-            ),
+            home: ManagerDashboardScreen(initialYear: 2026, initialQuarter: 1),
           ),
         ),
       );
@@ -118,7 +115,9 @@ void main() {
 
       final progressFinder = find.byType(LinearProgressIndicator);
       expect(progressFinder, findsOneWidget);
-      final progressWidget = tester.widget<LinearProgressIndicator>(progressFinder);
+      final progressWidget = tester.widget<LinearProgressIndicator>(
+        progressFinder,
+      );
       expect(progressWidget.value, closeTo(0.6, 0.01));
 
       // Tap Ubah Target
@@ -142,7 +141,9 @@ void main() {
       expect(find.text('Pencapaian: 50.0%'), findsOneWidget);
       expect(find.text('Sisa Menuju Target: Rp 3.000.000'), findsOneWidget);
 
-      final updatedProgress = tester.widget<LinearProgressIndicator>(progressFinder);
+      final updatedProgress = tester.widget<LinearProgressIndicator>(
+        progressFinder,
+      );
       expect(updatedProgress.value, closeTo(0.5, 0.01));
     },
   );
@@ -280,7 +281,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Belum ada data kinerja PT pada periode ini.'), findsOneWidget);
+      expect(
+        find.text('Belum ada data kinerja PT pada periode ini.'),
+        findsOneWidget,
+      );
       expect(find.byIcon(Icons.bar_chart_outlined), findsOneWidget);
 
       // KPI cards should show 0 values
@@ -289,34 +293,33 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Loading indicator ditampilkan saat data sedang dimuat',
-    (tester) async {
-      // Use an async delayed repo that hasn't completed yet
-      final repo = DelayedManagerDashboardRepository();
+  testWidgets('Loading indicator ditampilkan saat data sedang dimuat', (
+    tester,
+  ) async {
+    // Use an async delayed repo that hasn't completed yet
+    final repo = DelayedManagerDashboardRepository();
 
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: ManagerDashboardScreen(
-              repository: repo,
-              initialYear: 2026,
-              initialQuarter: 1,
-            ),
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: ManagerDashboardScreen(
+            repository: repo,
+            initialYear: 2026,
+            initialQuarter: 1,
           ),
         ),
-      );
+      ),
+    );
 
-      // Verify CircularProgressIndicator is shown during loading (pump without settle)
-      await tester.pump();
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    // Verify CircularProgressIndicator is shown during loading (pump without settle)
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-      // Let delayed future complete
-      repo.complete();
-      await tester.pumpAndSettle();
-      expect(find.byType(CircularProgressIndicator), findsNothing);
-    },
-  );
+    // Let delayed future complete
+    repo.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
 
   testWidgets(
     'Error handling menampilkan pesan error dan tombol Coba Lagi dapat ditekan untuk recovery',
@@ -401,9 +404,7 @@ void main() {
         ProviderScope(
           child: MaterialApp(
             home: MediaQuery(
-              data: const MediaQueryData(
-                textScaler: TextScaler.linear(1.5),
-              ),
+              data: const MediaQueryData(textScaler: TextScaler.linear(1.5)),
               child: ManagerDashboardScreen(
                 repository: repo,
                 initialYear: 2026,
@@ -420,12 +421,18 @@ void main() {
       expect(find.text('Total PT Aktif'), findsOneWidget);
 
       // Scroll through screen to ensure all widgets layout without overflow
-      await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -300));
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -300),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Grafik Penjualan Bulanan'), findsOneWidget);
 
-      await tester.drag(find.byType(SingleChildScrollView), const Offset(0, -300));
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -300),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Daftar Perbandingan Kinerja PT'), findsOneWidget);
@@ -439,7 +446,9 @@ void main() {
       addTearDown(() => db.close());
 
       // Seed trainer
-      final trainerId = await db.into(db.trainers).insert(
+      final trainerId = await db
+          .into(db.trainers)
+          .insert(
             TrainersCompanion.insert(
               name: 'Coach Faril',
               email: 'faril@mboisgym.com',
@@ -450,7 +459,9 @@ void main() {
           );
 
       // Seed client
-      final clientId = await db.into(db.clients).insert(
+      final clientId = await db
+          .into(db.clients)
+          .insert(
             ClientsCompanion.insert(
               trainerId: trainerId,
               name: 'Budi Santoso',
@@ -459,7 +470,9 @@ void main() {
           );
 
       // Seed package (12 sessions = Rp 1.500.000) created in Feb 2026 (Q1)
-      await db.into(db.ptPackages).insert(
+      await db
+          .into(db.ptPackages)
+          .insert(
             PtPackagesCompanion.insert(
               clientId: clientId,
               totalSessions: 12,
@@ -470,14 +483,9 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [
-            databaseProvider.overrideWithValue(db),
-          ],
+          overrides: [databaseProvider.overrideWithValue(db)],
           child: const MaterialApp(
-            home: ManagerDashboardScreen(
-              initialYear: 2026,
-              initialQuarter: 1,
-            ),
+            home: ManagerDashboardScreen(initialYear: 2026, initialQuarter: 1),
           ),
         ),
       );
@@ -530,4 +538,3 @@ class DelayedManagerDashboardRepository implements ManagerDashboardRepository {
     return completer.future;
   }
 }
-

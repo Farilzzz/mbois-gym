@@ -34,9 +34,35 @@ service cloud.firestore {
         && (!('createdAt' in data) || data.createdAt is timestamp)
         && (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
+    // Repository workout records are one nested document; permit their full
+    // operational payload while protecting immutable ownership and timestamps.
+    function workoutSchema(data) {
+      return data.keys().hasOnly(['id', 'logId', 'clientIntId', 'packageIntId', 'sessionIntId', 'performedAt', 'notes', 'totalVolume', 'exercises', 'createdAt', 'updatedAt'])
+        && data.keys().hasAll(['notes']) && data.notes is string
+        && (!('exercises' in data) || data.exercises is list)
+        && (!('totalVolume' in data) || data.totalVolume is number)
+        && (!('performedAt' in data) || data.performedAt is timestamp)
+        && (!('createdAt' in data) || data.createdAt is timestamp)
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+    function workoutUpdate() {
+      return workoutSchema(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notes', 'sessionIntId', 'totalVolume', 'exercises', 'updatedAt']);
+    }
+    function evaluationSchema(data) {
+      return data.keys().hasOnly(['id', 'evalId', 'packageIntId', 'finalWeightKg', 'bodyFatStart', 'bodyFatEnd', 'muscleStart', 'muscleEnd', 'armRight', 'armLeft', 'thighRight', 'thighLeft', 'achievement', 'evaluation', 'recommendation', 'conclusion', 'finalizedAt', 'note', 'createdAt', 'updatedAt'])
+        && data.keys().hasAny(['note', 'evaluation', 'conclusion', 'achievement'])
+        && (!('finalizedAt' in data) || data.finalizedAt is timestamp)
+        && (!('createdAt' in data) || data.createdAt is timestamp)
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
     function noteUpdate() {
       return noteSchema(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['note', 'updatedAt']);
+    }
+    function evaluationUpdate() {
+      return evaluationSchema(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['finalWeightKg', 'bodyFatStart', 'bodyFatEnd', 'muscleStart', 'muscleEnd', 'armRight', 'armLeft', 'thighRight', 'thighLeft', 'achievement', 'evaluation', 'recommendation', 'conclusion', 'updatedAt']);
     }
 
     function isValidSessionCompletion(clientId, sessionId) {
@@ -76,8 +102,9 @@ service cloud.firestore {
 
     // Roles/profiles are provisioned by trusted administration only.
     match /users/{uid} {
-      allow get: if (signedIn() && request.auth.uid == uid) || activeManager();
-      allow list: if activeManager();
+      // Profiles contain private contact/body data; roster uses projections.
+            allow get: if signedIn() && request.auth.uid == uid;
+            allow list: if false;
       allow create, delete: if false;
       allow update: if (signedIn() && request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -99,7 +126,7 @@ service cloud.firestore {
       allow update: if (activeManager() || clientAccess(clientId))
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['assignedTrainerIds'])
           || (activeManager() && validAssignment(request.resource.data.assignedTrainerIds)));
-      allow delete: if activeManager() || assigned(clientId);
+      allow delete: if false;
 
       match /packages/{packageId} {
         allow read: if clientAccess(clientId);
@@ -110,14 +137,18 @@ service cloud.firestore {
         allow update: if clientAccess(clientId)
           && (
             (
-              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['completedCount', 'totalSessions'])
-              && (request.resource.data.status == resource.data.status
-                || (resource.data.status == 'active' && request.resource.data.status in ['closed', 'cancelled']))
+              resource.data.status == 'active'
+              && request.resource.data.status in ['active', 'closed', 'cancelled']
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'status', 'closedAt', 'cancelledAt', 'cancelledBy', 'cancelReason', 'updatedAt'
+              ])
             )
             ||
             (
               resource.data.status == 'active'
-              && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['totalSessions'])
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'completedCount', 'status', 'lastCompletedSessionId', 'closedAt', 'updatedAt'
+              ])
               && request.resource.data.completedCount == resource.data.completedCount + 1
               && request.resource.data.completedCount <= resource.data.totalSessions
               && (request.resource.data.completedCount == resource.data.totalSessions
@@ -142,7 +173,12 @@ service cloud.firestore {
             (
               resource.data.status == 'scheduled'
               && request.resource.data.status in ['scheduled', 'cancelled']
-              && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['packageIntId', 'sessionNumber', 'completedAt'])
+              && request.resource.data.scheduledTime is timestamp
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'status', 'scheduledTime', 'notes', 'updatedAt',
+                'rescheduledAt', 'rescheduledBy', 'rescheduleReason',
+                'cancelledAt', 'cancelledBy', 'cancelReason'
+              ])
             )
             ||
             (
@@ -169,14 +205,18 @@ service cloud.firestore {
       }
       match /workouts/{workoutId} {
         allow read: if clientAccess(clientId);
-        allow create: if clientAccess(clientId) && noteSchema(request.resource.data);
-        allow update: if clientAccess(clientId) && noteUpdate();
-        allow delete: if false;
+        allow create: if clientAccess(clientId)
+          && (noteSchema(request.resource.data) || workoutSchema(request.resource.data))
+          && (!('logId' in request.resource.data) || request.resource.data.logId == workoutId);
+        allow update: if clientAccess(clientId) && (noteUpdate() || workoutUpdate());
+        allow delete: if clientAccess(clientId);
       }
       match /evaluations/{evaluationId} {
         allow read: if clientAccess(clientId);
-        allow create: if clientAccess(clientId) && noteSchema(request.resource.data);
-        allow update: if clientAccess(clientId) && noteUpdate();
+        allow create: if clientAccess(clientId)
+          && (noteSchema(request.resource.data) || evaluationSchema(request.resource.data))
+          && (!('evalId' in request.resource.data) || request.resource.data.evalId == evaluationId);
+        allow update: if clientAccess(clientId) && (noteUpdate() || evaluationUpdate());
         allow delete: if false;
       }
       match /assessments/{assessmentId} {

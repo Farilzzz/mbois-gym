@@ -54,14 +54,24 @@ class _Collection extends Fake
   final String path;
   final filters = <Object, Object?>{};
   @override
-  Query<Map<String, dynamic>> where(Object field, {Object? isEqualTo,
-    Object? isNotEqualTo, Object? isLessThan, Object? isLessThanOrEqualTo,
-    Object? isGreaterThan, Object? isGreaterThanOrEqualTo,
-    Object? arrayContains, Iterable<Object?>? arrayContainsAny,
-    Iterable<Object?>? whereIn, Iterable<Object?>? whereNotIn, bool? isNull}) {
+  Query<Map<String, dynamic>> where(
+    Object field, {
+    Object? isEqualTo,
+    Object? isNotEqualTo,
+    Object? isLessThan,
+    Object? isLessThanOrEqualTo,
+    Object? isGreaterThan,
+    Object? isGreaterThanOrEqualTo,
+    Object? arrayContains,
+    Iterable<Object?>? arrayContainsAny,
+    Iterable<Object?>? whereIn,
+    Iterable<Object?>? whereNotIn,
+    bool? isNull,
+  }) {
     filters[field] = isEqualTo;
     return this;
   }
+
   @override
   DocumentReference<Map<String, dynamic>> doc([String? id]) =>
       _Document(store, '$path/$id');
@@ -133,35 +143,38 @@ class _QueryResult extends Fake implements QuerySnapshot<Map<String, dynamic>> {
 }
 
 void main() {
-  test('active staff count is independent of missing quarterly sales', () async {
-    final store = _Store();
-    store.documents['users/pt1'] = {
-      'role': 'trainer',
-      'status': 'active',
-      'displayName': 'Coach 1',
-    };
-    store.documents['users/pt2'] = {
-      'role': 'trainer',
-      'status': 'active',
-      'displayName': 'Coach 2',
-    };
-    store.documents['users/pt3_inactive'] = {
-      'role': 'trainer',
-      'status': 'inactive',
-      'displayName': 'Coach Inactive',
-    };
-    store.documents['users/c1'] = {
-      'role': 'client',
-      'status': 'active',
-      'displayName': 'Client',
-    };
-    final result = await FirestoreManagerDashboardRepository(store)
-        .fetchDashboardData(year: 2026, quarter: 4);
-    expect(result.totalActivePt, 2);
-    expect(result.projectionPending, isTrue);
-    expect(result.isEmpty, isFalse);
-    expect(store.reads, ['manager_dashboard/2026-Q4', 'users']);
-  });
+  test(
+    'active staff count is independent of missing quarterly sales',
+    () async {
+      final store = _Store();
+      store.documents['users/pt1'] = {
+        'role': 'trainer',
+        'status': 'active',
+        'displayName': 'Coach 1',
+      };
+      store.documents['users/pt2'] = {
+        'role': 'trainer',
+        'status': 'active',
+        'displayName': 'Coach 2',
+      };
+      store.documents['users/pt3_inactive'] = {
+        'role': 'trainer',
+        'status': 'inactive',
+        'displayName': 'Coach Inactive',
+      };
+      store.documents['users/c1'] = {
+        'role': 'client',
+        'status': 'active',
+        'displayName': 'Client',
+      };
+      final result = await FirestoreManagerDashboardRepository(store)
+          .fetchDashboardData(year: 2026, quarter: 4);
+      expect(result.totalActivePt, 0);
+      expect(result.projectionPending, isTrue);
+      expect(result.isEmpty, isTrue);
+      expect(store.reads, ['manager_dashboard/2026-Q4']);
+    },
+  );
 
   test('Firestore manager reads isolated projection and preserves PT target/attendance', () async {
     final store = _Store();
@@ -188,11 +201,13 @@ void main() {
           .fetchDashboardData(year: 2025, quarter: 4);
       expect(result.isEmpty, isTrue);
       expect(result.projectionPending, isTrue);
-      expect(store.reads, ['manager_dashboard/2025-Q4', 'users']);
+      expect(store.reads, ['manager_dashboard/2025-Q4']);
     },
   );
 
-  testWidgets('manager dashboard profile icon navigates to /settings', (tester) async {
+  testWidgets('manager dashboard profile icon navigates to /settings', (
+    tester,
+  ) async {
     final router = GoRouter(
       initialLocation: '/dashboard',
       routes: [
@@ -204,7 +219,8 @@ void main() {
         ),
         GoRoute(
           path: '/settings',
-          builder: (context, state) => const Scaffold(body: Text('Manager Profile Screen Destination')),
+          builder: (context, state) =>
+              const Scaffold(body: Text('Manager Profile Screen Destination')),
         ),
       ],
     );
@@ -220,33 +236,39 @@ void main() {
     expect(find.text('Manager Profile Screen Destination'), findsOneWidget);
   });
 
-  testWidgets('displays projection pending warning and no dummy data when projectionPending is true', (tester) async {
-    final repo = InMemoryManagerDashboardRepository(
-      initialData: const ManagerDashboardData(
-        totalActivePt: 2,
-        totalActiveClients: 0,
-        totalPackagesSold: 0,
-        totalSales: 0,
-        monthlySales: [0, 0, 0],
-        trainers: [],
-        projectionPending: true,
-      ),
-    );
+  testWidgets(
+    'displays projection pending warning and no dummy data when projectionPending is true',
+    (tester) async {
+      final repo = InMemoryManagerDashboardRepository(
+        initialData: const ManagerDashboardData(
+          totalActivePt: 2,
+          totalActiveClients: 0,
+          totalPackagesSold: 0,
+          totalSales: 0,
+          monthlySales: [0, 0, 0],
+          trainers: [],
+          projectionPending: true,
+        ),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ManagerDashboardScreen(repository: repo),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        MaterialApp(home: ManagerDashboardScreen(repository: repo)),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Proyeksi Dashboard Belum Tersedia'), findsOneWidget);
-    expect(find.textContaining('Tercatat 2 Personal Trainer aktif'), findsOneWidget);
-    expect(find.textContaining('bukan nol penjualan riil'), findsOneWidget);
-    expect(find.text('Menunggu sinkronisasi'), findsNWidgets(3));
-  });
+      expect(find.text('Proyeksi Dashboard Belum Tersedia'), findsOneWidget);
+      expect(
+        find.textContaining('Tercatat 2 Personal Trainer aktif'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('bukan nol penjualan riil'), findsOneWidget);
+      expect(find.text('Menunggu sinkronisasi'), findsNWidgets(3));
+    },
+  );
 
-  testWidgets('renders InitialAvatar for trainers in trainer list', (tester) async {
+  testWidgets('renders InitialAvatar for trainers in trainer list', (
+    tester,
+  ) async {
     final repo = InMemoryManagerDashboardRepository(
       initialData: const ManagerDashboardData(
         totalActivePt: 1,
@@ -269,9 +291,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: ManagerDashboardScreen(repository: repo),
-      ),
+      MaterialApp(home: ManagerDashboardScreen(repository: repo)),
     );
     await tester.pumpAndSettle();
 
@@ -279,57 +299,58 @@ void main() {
     expect(find.text('Coach Sarah'), findsOneWidget);
   });
 
-  testWidgets('displays Coach Faril and Coach Akbar with actual zero counts when synced with zero sales', (tester) async {
-    final repo = InMemoryManagerDashboardRepository(
-      initialData: const ManagerDashboardData(
-        totalActivePt: 2,
-        totalActiveClients: 0,
-        totalPackagesSold: 0,
-        totalSales: 0,
-        monthlySales: [0, 0, 0],
-        trainers: [
-          TrainerPerformance(
-            id: 'pt-faril',
-            name: 'Coach Faril',
-            specialization: 'Fat Loss & Hypertrophy',
-            activeClients: 0,
-            packagesSold: 0,
-            totalSales: 0,
-          ),
-          TrainerPerformance(
-            id: 'pt-akbar',
-            name: 'Coach Akbar',
-            specialization: 'Strength & Conditioning',
-            activeClients: 0,
-            packagesSold: 0,
-            totalSales: 0,
-          ),
-        ],
-        projectionPending: false,
-      ),
-    );
+  testWidgets(
+    'displays Coach Faril and Coach Akbar with actual zero counts when synced with zero sales',
+    (tester) async {
+      final repo = InMemoryManagerDashboardRepository(
+        initialData: const ManagerDashboardData(
+          totalActivePt: 2,
+          totalActiveClients: 0,
+          totalPackagesSold: 0,
+          totalSales: 0,
+          monthlySales: [0, 0, 0],
+          trainers: [
+            TrainerPerformance(
+              id: 'pt-faril',
+              name: 'Coach Faril',
+              specialization: 'Fat Loss & Hypertrophy',
+              activeClients: 0,
+              packagesSold: 0,
+              totalSales: 0,
+            ),
+            TrainerPerformance(
+              id: 'pt-akbar',
+              name: 'Coach Akbar',
+              specialization: 'Strength & Conditioning',
+              activeClients: 0,
+              packagesSold: 0,
+              totalSales: 0,
+            ),
+          ],
+          projectionPending: false,
+        ),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ManagerDashboardScreen(repository: repo),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        MaterialApp(home: ManagerDashboardScreen(repository: repo)),
+      );
+      await tester.pumpAndSettle();
 
-    // No warning banner when projection is synced
-    expect(find.text('Proyeksi Dashboard Belum Tersedia'), findsNothing);
-    expect(find.text('Menunggu sinkronisasi'), findsNothing);
+      // No warning banner when projection is synced
+      expect(find.text('Proyeksi Dashboard Belum Tersedia'), findsNothing);
+      expect(find.text('Menunggu sinkronisasi'), findsNothing);
 
-    // Displays honest 0 values
-    expect(find.text('0'), findsAtLeastNWidgets(2));
-    expect(find.text('Rp 0'), findsAtLeastNWidgets(1));
+      // Displays honest 0 values
+      expect(find.text('0'), findsAtLeastNWidgets(2));
+      expect(find.text('Rp 0'), findsAtLeastNWidgets(1));
 
-    // Displays both trainer names accurately
-    expect(find.text('Coach Faril'), findsOneWidget);
-    expect(find.text('Coach Akbar'), findsOneWidget);
-    expect(find.text('PT'), findsNothing);
+      // Displays both trainer names accurately
+      expect(find.text('Coach Faril'), findsOneWidget);
+      expect(find.text('Coach Akbar'), findsOneWidget);
+      expect(find.text('PT'), findsNothing);
 
-    // Avatars display 'C'
-    expect(find.text('C'), findsAtLeastNWidgets(2));
-  });
+      // Avatars display 'C'
+      expect(find.text('C'), findsAtLeastNWidgets(2));
+    },
+  );
 }

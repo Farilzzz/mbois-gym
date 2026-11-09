@@ -54,6 +54,8 @@ Future<void> openCompletion(
   await tester.pumpAndSettle();
   await tester.drag(find.byType(ListView).first, const Offset(0, -250));
   await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text('Potong Sesi'));
+  await tester.pumpAndSettle();
   await tester.tap(find.text('Potong Sesi'));
   await tester.pumpAndSettle();
 }
@@ -76,46 +78,77 @@ Future<void> sign(WidgetTester tester, String label) async {
 }
 
 void main() {
-  testWidgets('compact confirmation keeps actions visible with keyboard and large text', (tester) async {
-    tester.view.physicalSize = const Size(320, 568);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await openCompletion(tester, RefusingRepository());
-    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
-    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    tester.view.viewInsets = const FakeViewPadding(bottom: 220);
-    addTearDown(tester.view.resetViewInsets);
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    final action = find.text('Verifikasi & Potong Sesi');
-    expect(tester.getRect(action).bottom, lessThanOrEqualTo(568));
-    expect(action.hitTestable(), findsOneWidget);
-  });
+  testWidgets(
+    'compact confirmation keeps actions visible with keyboard and large text',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await openCompletion(tester, RefusingRepository());
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 220);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final action = find.text('Verifikasi & Potong Sesi');
+      expect(tester.getRect(action).bottom, lessThanOrEqualTo(568));
+      expect(action.hitTestable(), findsOneWidget);
+    },
+  );
 
-  testWidgets('cancelled or discontinued client without completed sessions is not shown in operational tabs', (tester) async {
-    final repo = RefusingRepository()
-      ..addTestClient(id: 1, name: 'Stopped', lifecycle: 'discontinued', totalSessions: 4, packageStatus: 'closed')
-      ..addTestClient(id: 2, name: 'Completed Client', lifecycle: 'completed', totalSessions: 4, packageStatus: 'closed', completedSessions: 4);
-    await tester.pumpWidget(ProviderScope(overrides: [gymRepositoryProvider.overrideWithValue(repo), cloudAuthProvider.overrideWith(TestAuth.new)], child: const MaterialApp(home: ClientListScreen())));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'cancelled or discontinued client without completed sessions is not shown in operational tabs',
+    (tester) async {
+      final repo = RefusingRepository()
+        ..addTestClient(
+          id: 1,
+          name: 'Stopped',
+          lifecycle: 'discontinued',
+          totalSessions: 4,
+          packageStatus: 'closed',
+        )
+        ..addTestClient(
+          id: 2,
+          name: 'Completed Client',
+          lifecycle: 'completed',
+          totalSessions: 4,
+          packageStatus: 'closed',
+          completedSessions: 4,
+        );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            gymRepositoryProvider.overrideWithValue(repo),
+            cloudAuthProvider.overrideWith(TestAuth.new),
+          ],
+          child: const MaterialApp(home: ClientListScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    // In Tab Aktif: neither discontinued nor completed appears
-    expect(find.text('Stopped'), findsNothing);
-    expect(find.text('Completed Client'), findsNothing);
+      // In Tab Aktif: neither discontinued nor completed appears
+      expect(find.text('Stopped'), findsNothing);
+      expect(find.text('Completed Client'), findsNothing);
 
-    // Switch to Tab Selesai
-    await tester.tap(find.text('SELESAI'));
-    await tester.pumpAndSettle();
+      // Switch to Tab Selesai
+      await tester.tap(find.text('SELESAI'));
+      await tester.pumpAndSettle();
 
-    // In Tab Selesai: stopped/cancelled does NOT appear, and label Dihentikan does not exist
-    expect(find.text('Stopped'), findsNothing);
-    expect(find.text('Dihentikan'), findsNothing);
+      // In Tab Selesai: stopped/cancelled does NOT appear, and label Dihentikan does not exist
+      expect(find.text('Stopped'), findsNothing);
+      expect(find.text('Dihentikan'), findsNothing);
 
-    // Truly completed client appears with label 'Selesai'
-    expect(find.text('Completed Client'), findsOneWidget);
-    expect(find.text('Selesai'), findsOneWidget);
-  });
+      // Truly completed client appears with label 'Selesai'
+      expect(find.text('Completed Client'), findsOneWidget);
+      expect(find.text('Selesai'), findsOneWidget);
+      await tester.tap(find.text('DIBATALKAN'));
+      await tester.pumpAndSettle();
+      expect(find.text('Stopped'), findsOneWidget);
+      expect(find.text('Completed Client'), findsNothing);
+    },
+  );
 
   testWidgets(
     'repository false keeps confirmation and never announces success',
@@ -129,7 +162,10 @@ void main() {
       expect(repo.calls, 1);
       expect(find.text('Verifikasi & Potong Sesi'), findsOneWidget);
       expect(find.textContaining('Sesi berhasil diverifikasi'), findsNothing);
-      expect(find.textContaining('Status sesi telah berubah'), findsAtLeastNWidgets(1));
+      expect(
+        find.textContaining('Status sesi telah berubah'),
+        findsAtLeastNWidgets(1),
+      );
     },
   );
 }

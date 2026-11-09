@@ -1,6 +1,7 @@
 // ignore_for_file: subtype_of_sealed_class
 
 import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -50,22 +51,21 @@ class MemoryCollection extends Fake
 
   @override
   DocumentReference<Map<String, dynamic>> doc([String? id]) => MemoryDocument(
-        store,
-        '$path/${id ?? 'generated-${store.rows.length + 1}'}',
-      );
+    store,
+    '$path/${id ?? 'generated-${store.rows.length + 1}'}',
+  );
 
   @override
   Query<Map<String, dynamic>> orderBy(
     Object field, {
     bool descending = false,
-  }) =>
-      MemoryQuery(
-        store,
-        path,
-        const [],
-        orderField: field.toString(),
-        descending: descending,
-      );
+  }) => MemoryQuery(
+    store,
+    path,
+    const [],
+    orderField: field.toString(),
+    descending: descending,
+  );
 
   @override
   Query<Map<String, dynamic>> where(
@@ -81,10 +81,9 @@ class MemoryCollection extends Fake
     Iterable<Object?>? whereIn,
     Iterable<Object?>? whereNotIn,
     bool? isNull,
-  }) =>
-      MemoryQuery(store, path, [
-        (field.toString(), arrayContains ?? isEqualTo),
-      ]);
+  }) => MemoryQuery(store, path, [
+    (field.toString(), arrayContains ?? isEqualTo),
+  ]);
 }
 
 class MemoryQuery extends Fake implements Query<Map<String, dynamic>> {
@@ -105,14 +104,13 @@ class MemoryQuery extends Fake implements Query<Map<String, dynamic>> {
   Query<Map<String, dynamic>> orderBy(
     Object field, {
     bool descending = false,
-  }) =>
-      MemoryQuery(
-        store,
-        path,
-        filters,
-        orderField: field.toString(),
-        descending: descending,
-      );
+  }) => MemoryQuery(
+    store,
+    path,
+    filters,
+    orderField: field.toString(),
+    descending: descending,
+  );
 
   @override
   Query<Map<String, dynamic>> where(
@@ -128,14 +126,13 @@ class MemoryQuery extends Fake implements Query<Map<String, dynamic>> {
     Iterable<Object?>? whereIn,
     Iterable<Object?>? whereNotIn,
     bool? isNull,
-  }) =>
-      MemoryQuery(
-        store,
-        path,
-        [...filters, (field.toString(), isEqualTo)],
-        orderField: orderField,
-        descending: descending,
-      );
+  }) => MemoryQuery(
+    store,
+    path,
+    [...filters, (field.toString(), isEqualTo)],
+    orderField: orderField,
+    descending: descending,
+  );
 
   @override
   Query<Map<String, dynamic>> limit(int limit) => this;
@@ -189,8 +186,7 @@ class MemoryDocument extends Fake
   @override
   Future<DocumentSnapshot<Map<String, dynamic>>> get([
     GetOptions? options,
-  ]) async =>
-      MemoryDocumentSnapshot(this, store.rows[path]);
+  ]) async => MemoryDocumentSnapshot(this, store.rows[path]);
 
   @override
   Future<void> set(Map<String, dynamic> data, [SetOptions? options]) async {
@@ -247,11 +243,10 @@ class MemoryTransaction extends Fake implements Transaction {
   @override
   Future<DocumentSnapshot<T>> get<T extends Object?>(
     DocumentReference<T> reference,
-  ) async =>
-      MemoryDocumentSnapshot(
-        reference as DocumentReference<Map<String, dynamic>>,
-        store.rows[reference.path],
-      ) as DocumentSnapshot<T>;
+  ) async => MemoryDocumentSnapshot(
+    reference as DocumentReference<Map<String, dynamic>>,
+    store.rows[reference.path],
+  ) as DocumentSnapshot<T>;
 
   @override
   Transaction update(DocumentReference reference, Map<Object, Object?> data) {
@@ -356,7 +351,10 @@ void main() {
       store.rows['clients/client-1/packages/pkg-1']!['completedCount'] = 1;
       final repository = repo();
 
-      final success = await repository.completeSession(30, 'Final session done');
+      final success = await repository.completeSession(
+        30,
+        'Final session done',
+      );
       expect(success, isTrue);
 
       final pkgDoc = store.rows['clients/client-1/packages/pkg-1']!;
@@ -365,17 +363,23 @@ void main() {
       expect(pkgDoc['closedAt'], isNotNull);
     });
 
-    test('idempotent completion prevents double deduction on repeat call', () async {
-      final repository = repo();
-      final first = await repository.completeSession(30, 'First completion');
-      expect(first, isTrue);
+    test(
+      'idempotent completion prevents double deduction on repeat call',
+      () async {
+        final repository = repo();
+        final first = await repository.completeSession(30, 'First completion');
+        expect(first, isTrue);
 
-      final second = await repository.completeSession(30, 'Duplicate completion');
-      expect(second, isFalse);
+        final second = await repository.completeSession(
+          30,
+          'Duplicate completion',
+        );
+        expect(second, isFalse);
 
-      final pkgDoc = store.rows['clients/client-1/packages/pkg-1']!;
-      expect(pkgDoc['completedCount'], 1); // Quota was NOT incremented again
-    });
+        final pkgDoc = store.rows['clients/client-1/packages/pkg-1']!;
+        expect(pkgDoc['completedCount'], 1); // Quota was NOT incremented again
+      },
+    );
 
     test('getSessionDetails unpacks stroke points for UI consumers', () async {
       final repository = repo();
@@ -407,48 +411,62 @@ void main() {
       expect(result, isTrue);
     });
 
-    test('safe logging captures sanitized exception without leaking payload', () async {
-      final repository = repo();
-      store.throwOnTransaction = true;
-      final printLogs = <String>[];
+    test(
+      'safe logging captures sanitized exception without leaking payload',
+      () async {
+        final repository = repo();
+        store.throwOnTransaction = true;
+        final printLogs = <String>[];
 
-      // Run with custom print interception
-      final spec = ZoneSpecification(
-        print: (self, parent, zone, line) {
-          printLogs.add(line);
-        },
-      );
+        // Run with custom print interception
+        final spec = ZoneSpecification(
+          print: (self, parent, zone, line) {
+            printLogs.add(line);
+          },
+        );
 
-      final result = await runZoned(
-        () => repository.completeSession(
-          30,
-          'SECRET_MEDICAL_NOTES_SHOULD_NEVER_LEAK',
-          clientStrokes: [
-            [const Offset(999.0, 888.0)],
-          ],
-        ),
-        zoneSpecification: spec,
-      );
+        final result = await runZoned(
+          () => repository.completeSession(
+            30,
+            'SECRET_MEDICAL_NOTES_SHOULD_NEVER_LEAK',
+            clientStrokes: [
+              [const Offset(999.0, 888.0)],
+            ],
+          ),
+          zoneSpecification: spec,
+        );
 
-      expect(result, isFalse);
-      expect(printLogs.any((l) => l.contains('[FirestoreSafeLog] completeSession failed')), isTrue);
-      expect(printLogs.any((l) => l.contains('SECRET_MEDICAL_NOTES')), isFalse);
-      expect(printLogs.any((l) => l.contains('999.0')), isFalse);
-    });
+        expect(result, isFalse);
+        expect(
+          printLogs.any(
+            (l) => l.contains('[FirestoreSafeLog] completeSession failed'),
+          ),
+          isTrue,
+        );
+        expect(
+          printLogs.any((l) => l.contains('SECRET_MEDICAL_NOTES')),
+          isFalse,
+        );
+        expect(printLogs.any((l) => l.contains('999.0')), isFalse);
+      },
+    );
   });
 
   group('Lifecycle status evaluation', () {
-    test('closed package with 0/4 completed is discontinued (not completed)', () async {
-      store.rows['clients/client-1/packages/pkg-1']!['status'] = 'closed';
-      store.rows['clients/client-1/packages/pkg-1']!['completedCount'] = 0;
-      store.rows['clients/client-1/packages/pkg-1']!['totalSessions'] = 4;
-      // No completed sessions
-      store.rows['clients/client-1/sessions/sess-1']!['status'] = 'cancelled';
+    test(
+      'closed package with 0/4 completed is discontinued (not completed)',
+      () async {
+        store.rows['clients/client-1/packages/pkg-1']!['status'] = 'closed';
+        store.rows['clients/client-1/packages/pkg-1']!['completedCount'] = 0;
+        store.rows['clients/client-1/packages/pkg-1']!['totalSessions'] = 4;
+        // No completed sessions
+        store.rows['clients/client-1/sessions/sess-1']!['status'] = 'cancelled';
 
-      final repository = repo();
-      final status = await repository.getClientLifecycleStatus(10);
-      expect(status, 'discontinued');
-    });
+        final repository = repo();
+        final status = await repository.getClientLifecycleStatus(10);
+        expect(status, 'discontinued');
+      },
+    );
 
     test('closed package with 4/4 completed is completed', () async {
       store.rows['clients/client-1/packages/pkg-1']!['status'] = 'closed';

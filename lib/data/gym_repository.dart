@@ -28,6 +28,25 @@ abstract class GymRepository {
   Future<PtPackage?> currentPackage(int clientId);
   Future<PtPackage?> latestPackage(int clientId);
   Future<String> getClientLifecycleStatus(int clientId);
+  Future<List<PtPackage>> packagesForClient(int clientId) async {
+    final pkg = await latestPackage(clientId);
+    return pkg == null ? [] : [pkg];
+  }
+
+  Future<Map<String, dynamic>> packageCancellationDetails(
+    int packageId,
+  ) async => {};
+
+  static String packageLifecycle(PtPackage pkg, int completed) {
+    if (pkg.totalSessions > 0 && completed >= pkg.totalSessions) {
+      return 'completed';
+    }
+    if (pkg.status == 'active') {
+      return 'active';
+    }
+    return 'cancelled';
+  }
+
   Future<List<Session>> packageSessions(int packageId);
   Future<int> completedCount(int packageId);
   Future<int> schedule(int packageId, DateTime time);
@@ -94,6 +113,7 @@ abstract class GymRepository {
     String? cancelledBy,
     String? cancelReason,
   });
+
   /// Legacy client-SDK sales are never canonical payment records.
   Future<PackageSaleRecord> recordPackageSale(PackageSaleRecord sale);
   Future<List<PackageSaleRecord>> getPackageSales({
@@ -225,6 +245,14 @@ class SqliteGymRepository implements GymRepository {
   SqliteGymRepository(this.db);
 
   @override
+  Future<Map<String, dynamic>> packageCancellationDetails(int packageId) async {
+    final pkg = await (db.select(
+      db.ptPackages,
+    )..where((p) => p.id.equals(packageId))).getSingleOrNull();
+    return {'cancelledAt': pkg?.closedAt};
+  }
+
+  @override
   Future<List<Client>> allClients(int trainerId) => db.allClients(trainerId);
 
   @override
@@ -276,8 +304,12 @@ class SqliteGymRepository implements GymRepository {
       db.currentPackage(clientId);
 
   @override
-  Future<PtPackage?> latestPackage(int clientId) =>
-      db.currentPackage(clientId);
+  Future<PtPackage?> latestPackage(int clientId) => db.currentPackage(clientId);
+
+  @override
+  Future<List<PtPackage>> packagesForClient(int clientId) => (db.select(
+    db.ptPackages,
+  )..where((p) => p.clientId.equals(clientId))).get();
 
   @override
   Future<String> getClientLifecycleStatus(int clientId) async {
@@ -663,7 +695,8 @@ class FirestoreGymRepository implements GymRepository {
 
     final uid = currentUid;
     if (uid != null) {
-      final assigned = (data['assignedTrainerIds'] as List?)?.cast<String>() ?? [];
+      final assigned =
+          (data['assignedTrainerIds'] as List?)?.cast<String>() ?? [];
       if (!assigned.contains(uid)) return null;
     }
     return Client(
@@ -754,7 +787,8 @@ class FirestoreGymRepository implements GymRepository {
     if (uid != null) {
       final snap = await firestore.collection('clients').doc(docId).get();
       if (!snap.exists) return;
-      final assigned = (snap.data()?['assignedTrainerIds'] as List?)?.cast<String>() ?? [];
+      final assigned =
+          (snap.data()?['assignedTrainerIds'] as List?)?.cast<String>() ?? [];
       if (!assigned.contains(uid)) return;
     }
 
@@ -781,7 +815,8 @@ class FirestoreGymRepository implements GymRepository {
       if (uid != null) {
         final snap = await firestore.collection('clients').doc(docId).get();
         if (!snap.exists) return false;
-        final assigned = (snap.data()?['assignedTrainerIds'] as List?)?.cast<String>() ?? [];
+        final assigned =
+            (snap.data()?['assignedTrainerIds'] as List?)?.cast<String>() ?? [];
         if (!assigned.contains(uid)) return false;
       }
       final pkg = await currentPackage(clientId);
@@ -832,6 +867,53 @@ class FirestoreGymRepository implements GymRepository {
   }
 
   @override
+  Future<List<PtPackage>> packagesForClient(int clientId) async {
+    final clientDocId =
+        _clientDocIdByInt[clientId] ?? await _findClientDocId(clientId);
+    if (clientDocId == null) return [];
+    final snap = await firestore
+        .collection('clients')
+        .doc(clientDocId)
+        .collection('packages')
+        .where('totalSessions', isGreaterThan: 0)
+        .get();
+    return snap.docs.map((doc) {
+      final data = doc.data();
+      final id = _deriveIntId(doc.id, existing: (data['id'] as num?)?.toInt());
+      _pkgDocIdByInt[id] = doc.id;
+      _clientStringIdByPkgInt[id] = clientDocId;
+      return PtPackage(
+        id: id,
+        clientId: clientId,
+        totalSessions: (data['totalSessions'] as num?)?.toInt() ?? 0,
+        status: data['status'] as String? ?? 'active',
+        createdAt:
+            (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime(1970),
+        closedAt: ((data['cancelledAt'] ?? data['closedAt']) as Timestamp?)
+            ?.toDate(),
+      );
+    }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  @override
+  Future<Map<String, dynamic>> packageCancellationDetails(int packageId) async {
+    final resolved = await _resolvePackage(packageId);
+    if (resolved == null) return {};
+    final snap = await firestore
+        .collection('clients')
+        .doc(resolved.clientDocId)
+        .collection('packages')
+        .doc(resolved.packageDocId)
+        .get();
+    final data = snap.data() ?? {};
+    return {
+      'reason': data['cancelReason'],
+      'date': ((data['cancelledAt'] ?? data['closedAt']) as Timestamp?)
+          ?.toDate(),
+    };
+  }
+
+  @override
   Future<PtPackage?> latestPackage(int clientId) async {
     final clientDocId =
         _clientDocIdByInt[clientId] ?? await _findClientDocId(clientId);
@@ -871,8 +953,10 @@ class FirestoreGymRepository implements GymRepository {
         _clientDocIdByInt[clientId] ?? await _findClientDocId(clientId);
     if (clientDocId == null) return 'unknown';
 
-    final clientSnap =
-        await firestore.collection('clients').doc(clientDocId).get();
+    final clientSnap = await firestore
+        .collection('clients')
+        .doc(clientDocId)
+        .get();
     if (!clientSnap.exists || clientSnap.data() == null) return 'unknown';
     final clientData = clientSnap.data()!;
     final clientDocStatus = clientData['status'] as String? ?? 'active';
@@ -1237,17 +1321,21 @@ class FirestoreGymRepository implements GymRepository {
   Future<PtPackage> renewPackage(int clientId, int sessionsCount) async {
     final uid = currentUid;
     if (uid == null) throw StateError('User unauthenticated');
-    if (sessionsCount <= 0) throw ArgumentError.value(sessionsCount, 'sessionsCount');
+    if (sessionsCount <= 0) {
+      throw ArgumentError.value(sessionsCount, 'sessionsCount');
+    }
     final clientDocId =
         _clientDocIdByInt[clientId] ?? await _findClientDocId(clientId);
     if (clientDocId == null) throw StateError('Client doc not found');
 
-    final clientSnap =
-        await firestore.collection('clients').doc(clientDocId).get();
+    final clientSnap = await firestore
+        .collection('clients')
+        .doc(clientDocId)
+        .get();
     if (!clientSnap.exists) throw StateError('Client doc not found');
     final assigned =
         (clientSnap.data()?['assignedTrainerIds'] as List?)?.cast<String>() ??
-            [];
+        [];
     if (!assigned.contains(uid)) {
       throw StateError('Trainer not assigned to client');
     }
@@ -1363,32 +1451,32 @@ class FirestoreGymRepository implements GymRepository {
     final clientStrokesJson = clientStrokes == null
         ? <Map<String, dynamic>>[]
         : clientStrokes
-            .where((stroke) => stroke.isNotEmpty)
-            .map(
-              (stroke) => <String, dynamic>{
-                'points': stroke
-                    .where((p) => p.dx.isFinite && p.dy.isFinite)
-                    .map((p) => <String, dynamic>{'x': p.dx, 'y': p.dy})
-                    .toList(),
-              },
-            )
-            .where((m) => (m['points'] as List).isNotEmpty)
-            .toList();
+              .where((stroke) => stroke.isNotEmpty)
+              .map(
+                (stroke) => <String, dynamic>{
+                  'points': stroke
+                      .where((p) => p.dx.isFinite && p.dy.isFinite)
+                      .map((p) => <String, dynamic>{'x': p.dx, 'y': p.dy})
+                      .toList(),
+                },
+              )
+              .where((m) => (m['points'] as List).isNotEmpty)
+              .toList();
 
     final coachStrokesJson = coachStrokes == null
         ? <Map<String, dynamic>>[]
         : coachStrokes
-            .where((stroke) => stroke.isNotEmpty)
-            .map(
-              (stroke) => <String, dynamic>{
-                'points': stroke
-                    .where((p) => p.dx.isFinite && p.dy.isFinite)
-                    .map((p) => <String, dynamic>{'x': p.dx, 'y': p.dy})
-                    .toList(),
-              },
-            )
-            .where((m) => (m['points'] as List).isNotEmpty)
-            .toList();
+              .where((stroke) => stroke.isNotEmpty)
+              .map(
+                (stroke) => <String, dynamic>{
+                  'points': stroke
+                      .where((p) => p.dx.isFinite && p.dy.isFinite)
+                      .map((p) => <String, dynamic>{'x': p.dx, 'y': p.dy})
+                      .toList(),
+                },
+              )
+              .where((m) => (m['points'] as List).isNotEmpty)
+              .toList();
 
     try {
       return await firestore.runTransaction<bool>((tx) async {
@@ -1679,9 +1767,9 @@ class FirestoreGymRepository implements GymRepository {
       final uid = currentUid;
       final q = uid != null
           ? await firestore
-              .collection('clients')
-              .where('assignedTrainerIds', arrayContains: uid)
-              .get()
+                .collection('clients')
+                .where('assignedTrainerIds', arrayContains: uid)
+                .get()
           : await firestore.collection('clients').get();
       for (final cDoc in q.docs) {
         final wDocs = await cDoc.reference.collection('workouts').get();
@@ -1742,9 +1830,9 @@ class FirestoreGymRepository implements GymRepository {
       final uid = currentUid;
       final q = uid != null
           ? await firestore
-              .collection('clients')
-              .where('assignedTrainerIds', arrayContains: uid)
-              .get()
+                .collection('clients')
+                .where('assignedTrainerIds', arrayContains: uid)
+                .get()
           : await firestore.collection('clients').get();
       for (final cDoc in q.docs) {
         final wDocs = await cDoc.reference.collection('workouts').get();
@@ -2107,15 +2195,6 @@ class FirestoreGymRepository implements GymRepository {
           'cancelledAt': FieldValue.serverTimestamp(),
           if (reason != null && reason.isNotEmpty) 'cancelReason': reason,
         });
-
-    // Mark client document status as cancelled so it is excluded from operational views
-    await firestore
-        .collection('clients')
-        .doc(resolved.clientDocId)
-        .update({
-          'status': 'cancelled',
-          'cancelledAt': FieldValue.serverTimestamp(),
-        });
   }
 
   @override
@@ -2222,21 +2301,9 @@ class FirestoreGymRepository implements GymRepository {
 
   @override
   Future<PackageSaleRecord> recordPackageSale(PackageSaleRecord sale) async {
-    final docRef = sale.id.isNotEmpty
-        ? firestore.collection('package_sales').doc(sale.id)
-        : firestore.collection('package_sales').doc();
-    // Direct client SDK writes cannot create canonical 'valid' paid sales.
-    // Client SDK writes adapt to pending/recorded purchase semantics.
-    final finalSale = sale.copyWith(
-      id: docRef.id,
-      status: 'pending',
+    throw UnsupportedError(
+      'Penjualan belum dicatat: verifikasi pembayaran oleh backend diperlukan.',
     );
-    try {
-      await docRef.set(finalSale.toMap());
-    } on FirebaseException catch (e) {
-      _logSafeFirebaseException('recordPackageSale', e);
-    } catch (_) {}
-    return finalSale;
   }
 
   @override

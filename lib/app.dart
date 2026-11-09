@@ -369,8 +369,10 @@ GoRouter _createRouter(Ref ref, Listenable refresh) => GoRouter(
     ),
     GoRoute(
       path: '/clients/:id',
-      builder: (context, state) =>
-          ClientDetailScreen(clientId: int.parse(state.pathParameters['id']!)),
+      builder: (context, state) => ClientDetailScreen(
+        clientId: int.parse(state.pathParameters['id']!),
+        packageId: int.tryParse(state.uri.queryParameters['packageId'] ?? ''),
+      ),
     ),
     GoRoute(
       path: '/clients/:id/workout',

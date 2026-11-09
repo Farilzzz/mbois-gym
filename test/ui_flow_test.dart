@@ -234,19 +234,9 @@ void main() {
     final pkg = await db.currentPackage(clientId);
     expect(pkg!.status == 'cancelled' || pkg.status == 'closed', isTrue);
 
-    // Now "Perpanjang Paket PT" should be visible
-    final renewBtn = find.text('Perpanjang Paket PT');
-    expect(renewBtn, findsOneWidget);
-    await tester.tap(renewBtn);
-    await tester.pumpAndSettle();
-
-    // Choose 12 sessions and renew
-    await tester.tap(find.text('Perpanjang'));
-    await tester.pumpAndSettle();
-
-    final newPkg = await db.currentPackage(clientId);
-    expect(newPkg!.totalSessions, 8); // default was 8
-    expect(newPkg.status, 'active');
+    // Cancelled package history is read-only, not a renewal/debit surface.
+    expect(find.text('Perpanjang Paket PT'), findsNothing);
+    expect(find.text('Potong Sesi'), findsNothing);
   });
 
   testWidgets(

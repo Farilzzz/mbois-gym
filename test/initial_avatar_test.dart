@@ -81,7 +81,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('correctly displays C for Coach Faril and Coach Akbar', (tester) async {
+    testWidgets('correctly displays C for Coach Faril and Coach Akbar', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(

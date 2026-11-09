@@ -39,6 +39,7 @@ void main() {
               clients: [
                 ManagerClientItem(
                   id: 'client',
+                  status: 'active',
                   name: 'Client Flow',
                   packageName: 'Paket 10 Sesi',
                   totalSessions: 10,
@@ -87,6 +88,9 @@ void main() {
       expect(find.byType(BackButton), findsOneWidget);
       expect(find.byType(AppBottomNavigation), findsNothing);
       expect(find.text('Daftar Klien yang Ditangani'), findsOneWidget);
+      await tester.tap(find.text('Daftar Klien yang Ditangani'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ManagerClientHistoryScreen), findsOneWidget);
       await tester.tap(find.text('Client Flow'));
       await tester.pumpAndSettle();
       expect(find.byType(BackButton), findsOneWidget);
@@ -104,6 +108,9 @@ void main() {
         expect(find.text(forbidden), findsNothing);
       }
       await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(ManagerClientHistoryScreen), findsOneWidget);
+      await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       expect(find.text('Daftar Klien yang Ditangani'), findsOneWidget);
       await tester.tap(find.byType(BackButton));

@@ -24,11 +24,15 @@ class FakeGymRepository implements GymRepository {
   int _sessSeq = 1;
 
   @override
-  Future<List<Client>> allClients(int trainerId) async => List.unmodifiable(clients);
+  Future<List<Client>> allClients(int trainerId) async =>
+      List.unmodifiable(clients);
 
   @override
   Future<Client?> getClient(int clientId) async {
-    return clients.cast<Client?>().firstWhere((c) => c?.id == clientId, orElse: () => null);
+    return clients.cast<Client?>().firstWhere(
+      (c) => c?.id == clientId,
+      orElse: () => null,
+    );
   }
 
   @override
@@ -70,7 +74,7 @@ class FakeGymRepository implements GymRepository {
         status: 'active',
         createdAt: DateTime.now(),
         closedAt: null,
-      )
+      ),
     ];
     sessions[pkgId] = [];
     return id;
@@ -78,7 +82,10 @@ class FakeGymRepository implements GymRepository {
 
   Future<PtPackage?> activePackage(int clientId) async {
     final list = packages[clientId] ?? [];
-    return list.cast<PtPackage?>().firstWhere((p) => p?.status == 'active', orElse: () => null);
+    return list.cast<PtPackage?>().firstWhere(
+      (p) => p?.status == 'active',
+      orElse: () => null,
+    );
   }
 
   @override
@@ -127,7 +134,11 @@ class FakeGymRepository implements GymRepository {
   }
 
   @override
-  Future<bool> cancelSession(int sessionId, {String? cancelledBy, String? cancelReason}) async {
+  Future<bool> cancelSession(
+    int sessionId, {
+    String? cancelledBy,
+    String? cancelReason,
+  }) async {
     for (final entry in sessions.entries) {
       for (int i = 0; i < entry.value.length; i++) {
         final s = entry.value[i];
@@ -329,119 +340,124 @@ void main() {
       fakeRepo = FakeGymRepository();
     });
 
-    testWidgets('Session cancellation removes session from active scheduled view', (tester) async {
-      final clientId = await fakeRepo.addClient(
-        trainerId: 1,
-        name: 'Budi Test',
-        age: 26,
-        sessionsCount: 10,
-      );
-      final pkg = (await fakeRepo.activePackage(clientId))!;
-      await fakeRepo.schedule(pkg.id, DateTime.now().add(const Duration(days: 1)));
+    testWidgets(
+      'Session cancellation removes session from active scheduled view',
+      (tester) async {
+        final clientId = await fakeRepo.addClient(
+          trainerId: 1,
+          name: 'Budi Test',
+          age: 26,
+          sessionsCount: 10,
+        );
+        final pkg = (await fakeRepo.activePackage(clientId))!;
+        await fakeRepo.schedule(
+          pkg.id,
+          DateTime.now().add(const Duration(days: 1)),
+        );
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            gymRepositoryProvider.overrideWithValue(fakeRepo),
-          ],
-          child: MaterialApp(
-            home: ClientDetailScreen(clientId: clientId),
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [gymRepositoryProvider.overrideWithValue(fakeRepo)],
+            child: MaterialApp(home: ClientDetailScreen(clientId: clientId)),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      // Scheduled session should be visible
-      expect(find.textContaining('Sesi 1'), findsOneWidget);
-      expect(find.text('Potong Sesi'), findsOneWidget);
-      expect(find.text('Batalkan Sesi'), findsOneWidget);
+        // Scheduled session should be visible
+        expect(find.textContaining('Sesi 1'), findsOneWidget);
+        expect(find.text('Potong Sesi'), findsOneWidget);
+        expect(find.text('Batalkan Sesi'), findsOneWidget);
 
-      // Tap Batalkan Sesi
-      await tester.tap(find.text('Batalkan Sesi'));
-      await tester.pumpAndSettle();
+        // Tap Batalkan Sesi
+        await tester.tap(find.text('Batalkan Sesi'));
+        await tester.pumpAndSettle();
 
-      // Confirmation dialog appears
-      expect(find.textContaining('Batalkan Sesi 1'), findsOneWidget);
-      expect(find.text('Konfirmasi Batalkan'), findsOneWidget);
+        // Confirmation dialog appears
+        expect(find.textContaining('Batalkan Sesi 1'), findsOneWidget);
+        expect(find.text('Konfirmasi Batalkan'), findsOneWidget);
 
-      // Confirm cancellation
-      await tester.tap(find.text('Konfirmasi Batalkan'));
-      await tester.pumpAndSettle();
+        // Confirm cancellation
+        await tester.tap(find.text('Konfirmasi Batalkan'));
+        await tester.pumpAndSettle();
 
-      // In default 'Aktif' filter, cancelled session should no longer be in the scheduled list!
-      final updatedSessions = await fakeRepo.packageSessions(pkg.id);
-      expect(updatedSessions.first.status, 'cancelled');
+        // In default 'Aktif' filter, cancelled session should no longer be in the scheduled list!
+        final updatedSessions = await fakeRepo.packageSessions(pkg.id);
+        expect(updatedSessions.first.status, 'cancelled');
 
-      // Now switch filter to 'Dibatalkan'
-      await tester.tap(find.text('Dibatalkan'));
-      await tester.pumpAndSettle();
+        // Now switch filter to 'Dibatalkan'
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Dibatalkan'));
+        await tester.pumpAndSettle();
 
-      // The cancelled session is shown under Dibatalkan tab!
-      expect(find.textContaining('Sesi 1 •'), findsOneWidget);
-      expect(find.textContaining('DIBATALKAN'), findsWidgets);
-    });
+        // The cancelled session is shown under Dibatalkan tab!
+        expect(find.textContaining('Sesi 1 •'), findsOneWidget);
+        expect(find.textContaining('DIBATALKAN'), findsWidgets);
+      },
+    );
 
-    testWidgets('Potong Sesi opens dedicated signature dialog sections for client and coach', (tester) async {
-      final clientId = await fakeRepo.addClient(
-        trainerId: 1,
-        name: 'Rina Test',
-        age: 24,
-        sessionsCount: 10,
-      );
-      final pkg = (await fakeRepo.activePackage(clientId))!;
-      await fakeRepo.schedule(pkg.id, DateTime.now().add(const Duration(days: 1)));
+    testWidgets(
+      'Potong Sesi opens dedicated signature dialog sections for client and coach',
+      (tester) async {
+        final clientId = await fakeRepo.addClient(
+          trainerId: 1,
+          name: 'Rina Test',
+          age: 24,
+          sessionsCount: 10,
+        );
+        final pkg = (await fakeRepo.activePackage(clientId))!;
+        await fakeRepo.schedule(
+          pkg.id,
+          DateTime.now().add(const Duration(days: 1)),
+        );
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            gymRepositoryProvider.overrideWithValue(fakeRepo),
-          ],
-          child: MaterialApp(
-            home: ClientDetailScreen(clientId: clientId),
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [gymRepositoryProvider.overrideWithValue(fakeRepo)],
+            child: MaterialApp(home: ClientDetailScreen(clientId: clientId)),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      // Tap Potong Sesi
-      await tester.tap(find.text('Potong Sesi'));
-      await tester.pumpAndSettle();
+        // Tap Potong Sesi
+        await tester.tap(find.text('Potong Sesi'));
+        await tester.pumpAndSettle();
 
-      // Dialog opens
-      expect(find.textContaining('Tanda Tangan & Absensi'), findsOneWidget);
-      expect(find.text('Buka Pad Tanda Tangan Klien'), findsOneWidget);
-      expect(find.text('Buka Pad Tanda Tangan Coach'), findsOneWidget);
-    });
+        // Dialog opens
+        expect(find.textContaining('Tanda Tangan & Absensi'), findsOneWidget);
+        expect(find.text('Buka Pad Tanda Tangan Klien'), findsOneWidget);
+        expect(find.text('Buka Pad Tanda Tangan Coach'), findsOneWidget);
+      },
+    );
 
-    testWidgets('ClientFormScreen displays 4 official packages and saves client', (tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            gymRepositoryProvider.overrideWithValue(fakeRepo),
-            authProvider.overrideWith(() => _LoggedInAuth(1)),
-          ],
-          child: const MaterialApp(
-            home: ClientFormScreen(),
+    testWidgets(
+      'ClientFormScreen displays 4 official packages and saves client',
+      (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              gymRepositoryProvider.overrideWithValue(fakeRepo),
+              authProvider.overrideWith(() => _LoggedInAuth(1)),
+            ],
+            child: const MaterialApp(home: ClientFormScreen()),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      // Scroll down to see package choices
-      await tester.drag(find.byType(ListView), const Offset(0, -600));
-      await tester.pumpAndSettle();
+        // Scroll down to see package choices
+        await tester.drag(find.byType(ListView), const Offset(0, -600));
+        await tester.pumpAndSettle();
 
-      // Check the 4 official tiers are present in the form
-      expect(find.textContaining('Paket 4 Sesi'), findsOneWidget);
-      expect(find.textContaining('Paket 10 Sesi'), findsOneWidget);
-      expect(find.textContaining('Paket 16 Sesi'), findsOneWidget);
-      expect(find.textContaining('Paket 24 Sesi'), findsOneWidget);
+        // Check the 4 official tiers are present in the form
+        expect(find.textContaining('Paket 4 Sesi'), findsOneWidget);
+        expect(find.textContaining('Paket 10 Sesi'), findsOneWidget);
+        expect(find.textContaining('Paket 16 Sesi'), findsOneWidget);
+        expect(find.textContaining('Paket 24 Sesi'), findsOneWidget);
 
-      // Verify prices are formatted in Rupiah
-      expect(find.textContaining('Rp 500.000'), findsOneWidget);
-      expect(find.textContaining('Rp 1.000.000'), findsOneWidget);
-      expect(find.textContaining('Rp 1.600.000'), findsOneWidget);
-      expect(find.textContaining('Rp 2.000.000'), findsOneWidget);
-    });
+        // Verify prices are formatted in Rupiah
+        expect(find.textContaining('Rp 500.000'), findsOneWidget);
+        expect(find.textContaining('Rp 1.000.000'), findsOneWidget);
+        expect(find.textContaining('Rp 1.600.000'), findsOneWidget);
+        expect(find.textContaining('Rp 2.000.000'), findsOneWidget);
+      },
+    );
   });
 }

@@ -23,154 +23,166 @@ void main() {
   });
 
   group('UAT Regression Suite - Mbois Gym PT Management 2026', () {
-    test('1 & 2. Edit workout tanpa crash & Simpan perubahan berhasil tersimpan', () async {
-      final trainerId = await db.into(db.trainers).insert(
-            TrainersCompanion.insert(
-              name: 'Coach UAT',
-              email: 'coach.uat@mboisgym.com',
-              passwordSalt: 'salt',
-              passwordHash: 'hash',
+    test(
+      '1 & 2. Edit workout tanpa crash & Simpan perubahan berhasil tersimpan',
+      () async {
+        final trainerId = await db
+            .into(db.trainers)
+            .insert(
+              TrainersCompanion.insert(
+                name: 'Coach UAT',
+                email: 'coach.uat@mboisgym.com',
+                passwordSalt: 'salt',
+                passwordHash: 'hash',
+              ),
+            );
+
+        final clientId = await repo.addClient(
+          name: 'Klien UAT Latihan',
+          contact: '081234567890',
+          age: 26,
+          trainerId: trainerId,
+          sessionsCount: 8,
+          goal: 'Hypertrophy',
+          medical: 'None',
+        );
+
+        final pkg = await repo.currentPackage(clientId);
+        expect(pkg, isNotNull);
+
+        // Simpan workout awal
+        final logId = await repo.saveWorkout(
+          clientId: clientId,
+          packageId: pkg!.id,
+          notes: 'Sesi Bench Press awal',
+          exercises: [
+            ExerciseDraft(
+              name: 'Bench Press',
+              method: 'Straight Set',
+              equipment: 'Barbell',
+              groupKey: 'Chest',
+              rpe: 8.0,
+              rir: 2,
+              notes: 'Pemanasan cukup',
+              sets: [SetDraft(10, 60.0, stage: 1), SetDraft(8, 70.0, stage: 2)],
             ),
-          );
+          ],
+        );
 
-      final clientId = await repo.addClient(
-        name: 'Klien UAT Latihan',
-        contact: '081234567890',
-        age: 26,
-        trainerId: trainerId,
-        sessionsCount: 8,
-        goal: 'Hypertrophy',
-        medical: 'None',
-      );
+        expect(logId, greaterThan(0));
 
-      final pkg = await repo.currentPackage(clientId);
-      expect(pkg, isNotNull);
+        // Verifikasi baca workout awal
+        final logBefore = await repo.getWorkoutLog(logId);
+        expect(logBefore, isNotNull);
+        expect(logBefore!.notes, 'Sesi Bench Press awal');
 
-      // Simpan workout awal
-      final logId = await repo.saveWorkout(
-        clientId: clientId,
-        packageId: pkg!.id,
-        notes: 'Sesi Bench Press awal',
-        exercises: [
-          ExerciseDraft(
-            name: 'Bench Press',
-            method: 'Straight Set',
-            equipment: 'Barbell',
-            groupKey: 'Chest',
-            rpe: 8.0,
-            rir: 2,
-            notes: 'Pemanasan cukup',
-            sets: [
-              SetDraft(10, 60.0, stage: 1),
-              SetDraft(8, 70.0, stage: 2),
-            ],
-          ),
-        ],
-      );
+        final exercisesBefore = await repo.exercisesForLog(logId);
+        expect(exercisesBefore.length, 1);
+        final setsBefore = await repo.setsForExercise(exercisesBefore.first.id);
+        expect(setsBefore.length, 2);
 
-      expect(logId, greaterThan(0));
-
-      // Verifikasi baca workout awal
-      final logBefore = await repo.getWorkoutLog(logId);
-      expect(logBefore, isNotNull);
-      expect(logBefore!.notes, 'Sesi Bench Press awal');
-
-      final exercisesBefore = await repo.exercisesForLog(logId);
-      expect(exercisesBefore.length, 1);
-      final setsBefore = await repo.setsForExercise(exercisesBefore.first.id);
-      expect(setsBefore.length, 2);
-
-      // Edit Workout: ubah repetisi, beban, dan catatan
-      await repo.updateWorkout(
-        logId: logId,
-        notes: 'Sesi Bench Press terupdate - intensitas tinggi',
-        sessionId: null,
-        exercises: [
-          ExerciseDraft(
-            id: exercisesBefore.first.id,
-            name: 'Incline Bench Press',
-            method: 'Drop Set',
-            equipment: 'Dumbbell',
-            groupKey: 'Upper Chest',
-            rpe: 9.0,
-            rir: 1,
-            notes: 'Target kontraksi maksimal',
-            sets: [
-              SetDraft(12, 65.0, stage: 1, id: setsBefore[0].id),
-              SetDraft(10, 75.0, stage: 2, id: setsBefore[1].id),
-              SetDraft(8, 80.0, stage: 3), // tambah set ke-3
-            ],
-          ),
-        ],
-      );
-
-      // Verifikasi konsistensi data setelah edit
-      final logAfter = await repo.getWorkoutLog(logId);
-      expect(logAfter!.notes, 'Sesi Bench Press terupdate - intensitas tinggi');
-
-      final exercisesAfter = await repo.exercisesForLog(logId);
-      expect(exercisesAfter.length, 1);
-      expect(exercisesAfter.first.name, 'Incline Bench Press');
-      expect(exercisesAfter.first.method, 'Drop Set');
-
-      final setsAfter = await repo.setsForExercise(exercisesAfter.first.id);
-      expect(setsAfter.length, 3);
-      expect(setsAfter[0].reps, 12);
-      expect(setsAfter[0].weightKg, 65.0);
-      expect(setsAfter[2].reps, 8);
-      expect(setsAfter[2].weightKg, 80.0);
-    });
-
-    test('3. Hapus workout tetap berfungsi dan menghapus exercise & sets terkait', () async {
-      final trainerId = await db.into(db.trainers).insert(
-            TrainersCompanion.insert(
-              name: 'Coach Delete',
-              email: 'coach.del@mboisgym.com',
-              passwordSalt: 'salt',
-              passwordHash: 'hash',
+        // Edit Workout: ubah repetisi, beban, dan catatan
+        await repo.updateWorkout(
+          logId: logId,
+          notes: 'Sesi Bench Press terupdate - intensitas tinggi',
+          sessionId: null,
+          exercises: [
+            ExerciseDraft(
+              id: exercisesBefore.first.id,
+              name: 'Incline Bench Press',
+              method: 'Drop Set',
+              equipment: 'Dumbbell',
+              groupKey: 'Upper Chest',
+              rpe: 9.0,
+              rir: 1,
+              notes: 'Target kontraksi maksimal',
+              sets: [
+                SetDraft(12, 65.0, stage: 1, id: setsBefore[0].id),
+                SetDraft(10, 75.0, stage: 2, id: setsBefore[1].id),
+                SetDraft(8, 80.0, stage: 3), // tambah set ke-3
+              ],
             ),
-          );
+          ],
+        );
 
-      final clientId = await repo.addClient(
-        name: 'Klien Hapus',
-        contact: '081234567891',
-        age: 22,
-        trainerId: trainerId,
-        sessionsCount: 8,
-        goal: 'Strength',
-        medical: '',
-      );
+        // Verifikasi konsistensi data setelah edit
+        final logAfter = await repo.getWorkoutLog(logId);
+        expect(
+          logAfter!.notes,
+          'Sesi Bench Press terupdate - intensitas tinggi',
+        );
 
-      final pkg = await repo.currentPackage(clientId);
-      final logId = await repo.saveWorkout(
-        clientId: clientId,
-        packageId: pkg!.id,
-        notes: 'Akan dihapus',
-        exercises: [
-          ExerciseDraft(
-            name: 'Deadlift',
-            method: 'Standard',
-            equipment: 'Barbell',
-            sets: [SetDraft(5, 100.0, stage: 1)],
-          ),
-        ],
-      );
+        final exercisesAfter = await repo.exercisesForLog(logId);
+        expect(exercisesAfter.length, 1);
+        expect(exercisesAfter.first.name, 'Incline Bench Press');
+        expect(exercisesAfter.first.method, 'Drop Set');
 
-      final exercises = await repo.exercisesForLog(logId);
-      expect(exercises.length, 1);
+        final setsAfter = await repo.setsForExercise(exercisesAfter.first.id);
+        expect(setsAfter.length, 3);
+        expect(setsAfter[0].reps, 12);
+        expect(setsAfter[0].weightKg, 65.0);
+        expect(setsAfter[2].reps, 8);
+        expect(setsAfter[2].weightKg, 80.0);
+      },
+    );
 
-      // Hapus workout
-      await repo.deleteWorkout(logId);
+    test(
+      '3. Hapus workout tetap berfungsi dan menghapus exercise & sets terkait',
+      () async {
+        final trainerId = await db
+            .into(db.trainers)
+            .insert(
+              TrainersCompanion.insert(
+                name: 'Coach Delete',
+                email: 'coach.del@mboisgym.com',
+                passwordSalt: 'salt',
+                passwordHash: 'hash',
+              ),
+            );
 
-      final logAfter = await repo.getWorkoutLog(logId);
-      expect(logAfter, isNull);
+        final clientId = await repo.addClient(
+          name: 'Klien Hapus',
+          contact: '081234567891',
+          age: 22,
+          trainerId: trainerId,
+          sessionsCount: 8,
+          goal: 'Strength',
+          medical: '',
+        );
 
-      final exercisesAfter = await repo.exercisesForLog(logId);
-      expect(exercisesAfter, isEmpty);
-    });
+        final pkg = await repo.currentPackage(clientId);
+        final logId = await repo.saveWorkout(
+          clientId: clientId,
+          packageId: pkg!.id,
+          notes: 'Akan dihapus',
+          exercises: [
+            ExerciseDraft(
+              name: 'Deadlift',
+              method: 'Standard',
+              equipment: 'Barbell',
+              sets: [SetDraft(5, 100.0, stage: 1)],
+            ),
+          ],
+        );
+
+        final exercises = await repo.exercisesForLog(logId);
+        expect(exercises.length, 1);
+
+        // Hapus workout
+        await repo.deleteWorkout(logId);
+
+        final logAfter = await repo.getWorkoutLog(logId);
+        expect(logAfter, isNull);
+
+        final exercisesAfter = await repo.exercisesForLog(logId);
+        expect(exercisesAfter, isEmpty);
+      },
+    );
 
     test('4, 5 & 6. Progress paket sesuai completedCount, pembatalan tidak memotong kuota, dan paket batal keluar dari operasional', () async {
-      final trainerId = await db.into(db.trainers).insert(
+      final trainerId = await db
+          .into(db.trainers)
+          .insert(
             TrainersCompanion.insert(
               name: 'Coach Lifecycle',
               email: 'coach.life@mboisgym.com',
@@ -203,7 +215,10 @@ void main() {
       );
 
       // Jadwal dibatalkan
-      await repo.cancelSession(sess1Id, cancelReason: 'Klien ada halangan mendadak');
+      await repo.cancelSession(
+        sess1Id,
+        cancelReason: 'Klien ada halangan mendadak',
+      );
 
       // Kuota completed tetap 0, sesi batal tidak memotong kuota
       completed = await repo.completedCount(pkg.id);
@@ -214,7 +229,10 @@ void main() {
         pkg.id,
         DateTime.now().add(const Duration(days: 2)),
       );
-      final ok = await repo.completeSession(sess2Id, 'Sesi pengganti terlaksana sempurna');
+      final ok = await repo.completeSession(
+        sess2Id,
+        'Sesi pengganti terlaksana sempurna',
+      );
       expect(ok, isTrue);
 
       completed = await repo.completedCount(pkg.id);
@@ -239,7 +257,9 @@ void main() {
     });
 
     test('7. Klien selesai tetap memiliki riwayat absensi dan sesi', () async {
-      final trainerId = await db.into(db.trainers).insert(
+      final trainerId = await db
+          .into(db.trainers)
+          .insert(
             TrainersCompanion.insert(
               name: 'Coach Selesai',
               email: 'coach.selesai@mboisgym.com',
@@ -282,42 +302,58 @@ void main() {
       expect(sessions.every((s) => s.status == 'completed'), isTrue);
     });
 
-    test('8 & 9. Manager menghitung seluruh PT aktif (termasuk tanpa penjualan)', () async {
-      // Buat 2 trainer aktif
-      await db.into(db.trainers).insert(
-            TrainersCompanion.insert(
-              name: 'Coach Akbar (Aktif, ada klien)',
-              email: 'akbar@mboisgym.com',
-              passwordSalt: 'salt',
-              passwordHash: 'hash',
-            ),
-          );
+    test(
+      '8 & 9. Manager menghitung seluruh PT aktif (termasuk tanpa penjualan)',
+      () async {
+        // Buat 2 trainer aktif
+        await db
+            .into(db.trainers)
+            .insert(
+              TrainersCompanion.insert(
+                name: 'Coach Akbar (Aktif, ada klien)',
+                email: 'akbar@mboisgym.com',
+                passwordSalt: 'salt',
+                passwordHash: 'hash',
+              ),
+            );
 
-      await db.into(db.trainers).insert(
-            TrainersCompanion.insert(
-              name: 'Coach Faril (Aktif, baru masuk/tanpa penjualan)',
-              email: 'faril@mboisgym.com',
-              passwordSalt: 'salt',
-              passwordHash: 'hash',
-            ),
-          );
+        await db
+            .into(db.trainers)
+            .insert(
+              TrainersCompanion.insert(
+                name: 'Coach Faril (Aktif, baru masuk/tanpa penjualan)',
+                email: 'faril@mboisgym.com',
+                passwordSalt: 'salt',
+                passwordHash: 'hash',
+              ),
+            );
 
-      final managerRepo = SqliteManagerDashboardRepository(db);
-      final data = await managerRepo.fetchDashboardData(year: 2026, quarter: 1);
+        final managerRepo = SqliteManagerDashboardRepository(db);
+        final data = await managerRepo.fetchDashboardData(
+          year: 2026,
+          quarter: 1,
+        );
 
-      // Total PT aktif harus 2, bukan 0 atau 1
-      expect(data.totalActivePt, 2);
-      expect(data.trainers.length, 2);
+        // Total PT aktif harus 2, bukan 0 atau 1
+        expect(data.totalActivePt, 2);
+        expect(data.trainers.length, 2);
 
-      final ptFaril = data.trainers.firstWhere((t) => t.name.contains('Coach Faril'));
-      expect(ptFaril.totalSales, 0.0);
-      expect(ptFaril.packagesSold, 0);
-      expect(ptFaril.quarterlyTarget, 5000000.0);
-      expect(ptFaril.achievementPercentage, 0.0);
-    });
+        final ptFaril = data.trainers.firstWhere(
+          (t) => t.name.contains('Coach Faril'),
+        );
+        expect(ptFaril.totalSales, 0.0);
+        expect(ptFaril.packagesSold, 0);
+        expect(ptFaril.quarterlyTarget, 5000000.0);
+        expect(ptFaril.achievementPercentage, 0.0);
+      },
+    );
 
     test('10 & 11. Target Rp 5 Juta per PT per Triwulan hanya menghitung transaksi valid', () {
-      final target = const QuarterlyTarget(year: 2026, quarter: 1, targetAmount: 5000000);
+      final target = const QuarterlyTarget(
+        year: 2026,
+        quarter: 1,
+        targetAmount: 5000000,
+      );
 
       final sales = [
         PackageSaleRecord(

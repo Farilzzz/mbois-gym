@@ -10,6 +10,7 @@ import '../data/exercise_api_service.dart';
 import '../app.dart';
 import '../data/app_database.dart';
 import '../data/pt_packages.dart';
+import '../data/gym_repository.dart';
 import '../widgets/dedicated_signature_dialog.dart';
 import '../widgets/initial_avatar.dart';
 import '../design_system/app_design_system.dart';
@@ -332,7 +333,8 @@ class DashboardScreen extends ConsumerWidget {
             child: GestureDetector(
               onTap: () => context.go('/settings'),
               child: InitialAvatar(
-                name: (cloudProfile?.name.trim().isNotEmpty == true &&
+                name:
+                    (cloudProfile?.name.trim().isNotEmpty == true &&
                         cloudProfile!.name.trim() != 'PT')
                     ? cloudProfile.name
                     : 'Coach Mbois',
@@ -400,8 +402,8 @@ class DashboardScreen extends ConsumerWidget {
           final cloudName = cloudProfile?.name.trim();
           final resolvedTrainerName =
               (cloudName != null && cloudName.isNotEmpty && cloudName != 'PT')
-                  ? cloudName
-                  : 'Coach Mbois';
+              ? cloudName
+              : 'Coach Mbois';
           final trainer = Trainer(
             id: trainerId,
             name: resolvedTrainerName,
@@ -628,7 +630,7 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -656,6 +658,7 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen>
           tabs: const [
             Tab(text: 'AKTIF'),
             Tab(text: 'SELESAI'),
+            Tab(text: 'DIBATALKAN'),
           ],
         ),
       ),
@@ -699,8 +702,15 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen>
                 return TabBarView(
                   controller: _tabController,
                   children: [
-                    _ClientCategoryList(clients: filtered, activeOnly: true),
-                    _ClientCategoryList(clients: filtered, activeOnly: false),
+                    _ClientCategoryList(clients: filtered, category: 'active'),
+                    _ClientCategoryList(
+                      clients: filtered,
+                      category: 'completed',
+                    ),
+                    _ClientCategoryList(
+                      clients: filtered,
+                      category: 'cancelled',
+                    ),
                   ],
                 );
               },
@@ -719,36 +729,38 @@ class _ClientListScreenState extends ConsumerState<ClientListScreen>
 }
 
 class _ClientCategoryList extends ConsumerWidget {
-  const _ClientCategoryList({required this.clients, required this.activeOnly});
+  const _ClientCategoryList({required this.clients, required this.category});
   final List<Client> clients;
-  final bool activeOnly;
+  final String category;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.watch(gymRepositoryProvider);
 
-    return FutureBuilder<List<(Client, PtPackage?, int, String)>>(
+    return FutureBuilder<List<(Client, PtPackage, int, String)>>(
       future: Future.wait(
         clients.map((c) async {
-          final lifecycle = await db.getClientLifecycleStatus(c.id);
-          final pkg = await db.latestPackage(c.id);
-          final completed = pkg != null ? await db.completedCount(pkg.id) : 0;
-          return (c, pkg, completed, lifecycle);
+          final packages = await db.packagesForClient(c.id);
+          return Future.wait(
+            packages.map((pkg) async {
+              final completed = await db.completedCount(pkg.id);
+              return (
+                c,
+                pkg,
+                completed,
+                GymRepository.packageLifecycle(pkg, completed),
+              );
+            }),
+          );
         }),
-      ),
+      ).then((rows) => rows.expand((row) => row).toList()),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-        final items = snapshot.data!.where((item) {
-          final lifecycle = item.$4;
-          if (activeOnly) {
-            return lifecycle == 'active';
-          } else {
-            // Tab Selesai: strictly completed clients whose full package sessions were finished
-            return lifecycle == 'completed';
-          }
-        }).toList();
+        final items = snapshot.data!
+            .where((item) => item.$4 == category)
+            .toList();
 
         if (items.isEmpty) {
           return Center(
@@ -760,9 +772,11 @@ class _ClientCategoryList extends ConsumerWidget {
                   const Icon(Icons.search_off, size: 56, color: kMboisMuted),
                   const SizedBox(height: 8),
                   Text(
-                    activeOnly
+                    category == 'active'
                         ? 'Tidak ada klien aktif ditemukan.'
-                        : 'Belum ada klien di riwayat/selesai.',
+                        : category == 'completed'
+                        ? 'Belum ada paket selesai.'
+                        : 'Belum ada paket dibatalkan.',
                     style: const TextStyle(color: kMboisMuted),
                   ),
                 ],
@@ -776,22 +790,16 @@ class _ClientCategoryList extends ConsumerWidget {
           itemCount: items.length,
           itemBuilder: (context, index) {
             final (c, pkg, completed, lifecycle) = items[index];
-            final total = pkg?.totalSessions ?? 8;
-            final isWaitingEvaluation =
-                activeOnly && completed >= total;
+            final total = pkg.totalSessions;
+            final activeOnly = category == 'active';
 
             final (badgeText, badgeColor, badgeTextColor) = () {
               if (activeOnly) {
-                if (isWaitingEvaluation) {
-                  return (
-                    'Menunggu Post PT',
-                    Colors.orange.shade100,
-                    Colors.orange.shade900,
-                  );
-                }
                 return ('Aktif', kMboisMint, kMboisTeal);
               }
-              // Tab Selesai: strictly completed packages
+              if (category == 'cancelled') {
+                return ('Dibatalkan', Colors.red.shade100, Colors.red.shade900);
+              }
               return ('Selesai', Colors.grey.shade200, Colors.blueGrey);
             }();
 
@@ -860,7 +868,22 @@ class _ClientCategoryList extends ConsumerWidget {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    if (pkg != null) ...[
+                    Text(
+                      'Paket PT: $total Sesi',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    if (category == 'cancelled')
+                      FutureBuilder<Map<String, dynamic>>(
+                        future: db.packageCancellationDetails(pkg.id),
+                        builder: (context, details) {
+                          final reason = details.data?['reason'];
+                          final date = details.data?['date'] as DateTime?;
+                          return Text(
+                            'Dibatalkan${date == null ? '' : ' ${date.day}/${date.month}/${date.year}'}${reason == null || reason.toString().isEmpty ? '' : ' • $reason'}',
+                          );
+                        },
+                      ),
+                    if (total > 0) ...[
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -897,7 +920,9 @@ class _ClientCategoryList extends ConsumerWidget {
                       child: TextButton.icon(
                         icon: const Icon(Icons.arrow_forward, size: 16),
                         label: const Text('Buka Detail Klien'),
-                        onPressed: () => context.push('/clients/${c.id}'),
+                        onPressed: () => context.push(
+                          '/clients/${c.id}?packageId=${pkg.id}',
+                        ),
                       ),
                     ),
                   ],
@@ -966,7 +991,7 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
         notes: _notes.text,
       );
 
-      // Catat transaksi penjualan paket resmi PT
+      String? saleWarning;
       try {
         final currentCloudUser = ref.read(cloudAuthProvider).value;
         await db.recordPackageSale(
@@ -984,12 +1009,16 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
             status: 'valid',
           ),
         );
-      } catch (_) {}
+      } catch (_) {
+        saleWarning = ' Penjualan belum dicatat; menunggu verifikasi backend.';
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Client dan Paket PT berhasil disimpan!'),
+          SnackBar(
+            content: Text(
+              'Client dan Paket PT berhasil disimpan!${saleWarning ?? ''}',
+            ),
           ),
         );
         context.pushReplacement('/clients/$clientId');
@@ -1226,8 +1255,9 @@ class _ClientFormScreenState extends ConsumerState<ClientFormScreen> {
 }
 
 class ClientDetailScreen extends ConsumerStatefulWidget {
-  const ClientDetailScreen({super.key, required this.clientId});
+  const ClientDetailScreen({super.key, required this.clientId, this.packageId});
   final int clientId;
+  final int? packageId;
   @override
   ConsumerState<ClientDetailScreen> createState() => _ClientDetailScreenState();
 }
@@ -1295,7 +1325,15 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen>
         key: ValueKey(_refreshCount),
         future: Future.wait([
           db.getClient(widget.clientId),
-          db.currentPackage(widget.clientId),
+          widget.packageId == null
+              ? db.currentPackage(widget.clientId)
+              : db
+                    .packagesForClient(widget.clientId)
+                    .then(
+                      (packages) => packages
+                          .where((p) => p.id == widget.packageId)
+                          .firstOrNull,
+                    ),
         ]),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
@@ -1314,10 +1352,21 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen>
             controller: _tabController,
             children: [
               _AttendanceTab(client: client, package: pkg, onRefresh: _refresh),
-              _ExerciseTab(client: client, package: pkg),
+              if (pkg.status == 'active')
+                _ExerciseTab(client: client, package: pkg)
+              else
+                _AttendanceTab(client: client, package: pkg),
               _HistoryTab(client: client, package: pkg),
-              _PostPtTab(client: client, package: pkg, onRefresh: _refresh),
-              _AssessmentTab(client: client, onRefresh: _refresh),
+              if (pkg.status == 'active' || pkg.status == 'closed')
+                _PostPtTab(client: client, package: pkg, onRefresh: _refresh)
+              else
+                const Center(
+                  child: Text('Paket ditutup. Riwayat sesi tetap tersimpan.'),
+                ),
+              if (pkg.status == 'active')
+                _AssessmentTab(client: client, onRefresh: _refresh)
+              else
+                const Center(child: Text('Paket ditutup — hanya baca.')),
             ],
           );
         },
@@ -1341,7 +1390,7 @@ class _AttendanceTab extends ConsumerStatefulWidget {
 }
 
 class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
-  String _selectedStatus = 'Aktif';
+  String _selectedStatus = 'Semua';
 
   Client get client => widget.client;
   PtPackage get package => widget.package;
@@ -1429,7 +1478,9 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
               ),
             ),
             const SizedBox(height: 8),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 if (package.status == 'active')
                   OutlinedButton.icon(
@@ -1472,16 +1523,14 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text(
-                                'Paket PT berhasil dibatalkan.',
-                              ),
+                              content: Text('Paket PT berhasil dibatalkan.'),
                             ),
                           );
                         }
                       }
                     },
                   )
-                else
+                else if (completed >= package.totalSessions)
                   ElevatedButton.icon(
                     icon: const Icon(Icons.autorenew, size: 16),
                     label: const Text('Perpanjang Paket PT'),
@@ -1566,6 +1615,7 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
                                   price: chosen * 100000,
                                 ),
                               );
+                          String? saleWarning;
                           try {
                             final currentCloudUser = ref
                                 .read(cloudAuthProvider)
@@ -1587,14 +1637,16 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
                                 status: 'valid',
                               ),
                             );
-                          } catch (_) {}
+                          } catch (_) {
+                            saleWarning = ' Penjualan belum dicatat; menunggu verifikasi backend.';
+                          }
 
                           onRefresh?.call();
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
-                                  'Paket $chosen sesi berhasil dibuat!',
+                                  'Paket $chosen sesi berhasil dibuat!${saleWarning ?? ''}',
                                 ),
                               ),
                             );
@@ -1978,6 +2030,8 @@ class _AttendanceTabState extends ConsumerState<_AttendanceTab> {
                 title: Text(
                   'Sesi ${session.sessionNumber}: Tanda Tangan & Absensi',
                   style: const TextStyle(fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
                 actions: [
                   IconButton(
@@ -3962,7 +4016,8 @@ class _WorkoutEditorScreenState extends ConsumerState<WorkoutEditorScreen> {
     });
     try {
       final db = ref.read(gymRepositoryProvider);
-      final pkg = (await db.currentPackage(widget.clientId)) ??
+      final pkg =
+          (await db.currentPackage(widget.clientId)) ??
           (await db.latestPackage(widget.clientId));
       if (pkg != null) {
         _availableSessions = await db.packageSessions(pkg.id);

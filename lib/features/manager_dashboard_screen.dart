@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -45,8 +47,10 @@ class ManagerClientItem {
     required this.attendedSessions,
     required this.remainingSessions,
     this.attendanceRecords = const [],
+    this.status = 'unknown',
   });
 
+  final String status;
   final String id;
   final String name;
   final String packageName;
@@ -54,6 +58,88 @@ class ManagerClientItem {
   final int attendedSessions;
   final int remainingSessions;
   final List<ManagerClientAttendanceRecord> attendanceRecords;
+
+  // Legacy projections without lifecycle are deliberately not called active.
+  bool get isActive => status == 'active' && remainingSessions > 0;
+  String get statusLabel => switch (status) {
+    'active' when remainingSessions > 0 => 'Aktif',
+    'completed' => 'Selesai',
+    'cancelled' => 'Dibatalkan',
+    'discontinued' => 'Dihentikan',
+    _ => 'Status belum tersedia',
+  };
+}
+
+/// Projection-only client roster; historical service is never an active total.
+class ManagerClientHistoryScreen extends StatefulWidget {
+  const ManagerClientHistoryScreen({
+    super.key,
+    required this.trainer,
+    required this.onAttendance,
+  });
+  final TrainerPerformance trainer;
+  final void Function(BuildContext, ManagerClientItem) onAttendance;
+  @override
+  State<ManagerClientHistoryScreen> createState() =>
+      _ManagerClientHistoryScreenState();
+}
+
+class _ManagerClientHistoryScreenState
+    extends State<ManagerClientHistoryScreen> {
+  String filter = 'all';
+  @override
+  Widget build(BuildContext context) {
+    final clients = widget.trainer.clients
+        .where(
+          (c) => switch (filter) {
+            'active' => c.isActive,
+            'history' => !c.isActive,
+            _ => true,
+          },
+        )
+        .toList();
+    return Scaffold(
+      appBar: AppBar(title: Text('Klien • ${widget.trainer.name}')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Status layanan bukan bukti pembayaran atau pengembalian dana.',
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final item in const {
+                'all': 'Semua',
+                'active': 'Aktif',
+                'history': 'Riwayat',
+              }.entries)
+                ChoiceChip(
+                  label: Text(item.value),
+                  selected: filter == item.key,
+                  onSelected: (_) => setState(() => filter = item.key),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (clients.isEmpty) const Text('Tidak ada klien pada filter ini.'),
+          for (final client in clients)
+            Card(
+              child: ListTile(
+                title: Text(client.name),
+                subtitle: Text(
+                  '${client.statusLabel} • ${client.packageName}\n${client.attendedSessions} dari ${client.totalSessions} sesi dihadiri • Sisa ${client.remainingSessions}',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => widget.onAttendance(context, client),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Model for individual Trainer Performance in Manager Dashboard.
@@ -166,6 +252,14 @@ class DashboardPeriod {
 /// Abstract contract for Manager Dashboard repository.
 abstract class ManagerDashboardRepository {
   Future<ManagerDashboardData> fetchDashboardData({
+    required int year,
+    required int quarter,
+  });
+}
+
+/// Optional live read-model contract keeps existing repository fakes compatible.
+abstract class LiveManagerDashboardRepository {
+  Stream<ManagerDashboardData> watchDashboardData({
     required int year,
     required int quarter,
   });
@@ -350,11 +444,23 @@ class SqliteManagerDashboardRepository implements ManagerDashboardRepository {
 /// projection job materialises only operational attendance fields below:
 /// `manager_dashboard/{year}-Q{quarter}/trainers/{trainerId}/clients/{clientId}`.
 class FirestoreManagerDashboardRepository
-    implements ManagerDashboardRepository {
+    implements ManagerDashboardRepository, LiveManagerDashboardRepository {
   FirestoreManagerDashboardRepository(this.firestore);
   final FirebaseFirestore firestore;
 
   static String periodId(int year, int quarter) => '$year-Q$quarter';
+
+  // Trusted source reconciliation publishes the period marker after its children.
+  // Never subscribe to sensitive source collections from a manager client.
+  @override
+  Stream<ManagerDashboardData> watchDashboardData({
+    required int year,
+    required int quarter,
+  }) => firestore
+      .collection('manager_dashboard')
+      .doc(periodId(year, quarter))
+      .snapshots()
+      .asyncMap((_) => fetchDashboardData(year: year, quarter: quarter));
 
   static DateTime _date(Object? value) {
     if (value is Timestamp) return value.toDate();
@@ -385,52 +491,13 @@ class FirestoreManagerDashboardRepository
         .doc(periodId(year, quarter));
     final summary = await period.get();
     if (!summary.exists) {
-      int activePtCount = 0;
-      final trainers = <TrainerPerformance>[];
-      try {
-        final profiles = await firestore
-            .collection('users')
-            .where('role', isEqualTo: 'trainer')
-            .where('status', isEqualTo: 'active')
-            .get();
-        activePtCount = profiles.docs.length;
-        for (final doc in profiles.docs) {
-          final d = doc.data();
-          final rawName = (d['displayName'] as String?)?.trim();
-          final altName = (d['name'] as String?)?.trim();
-          final resolvedName =
-              (rawName != null && rawName.isNotEmpty && rawName != 'PT')
-              ? rawName
-              : (altName != null && altName.isNotEmpty && altName != 'PT')
-              ? altName
-              : 'Coach Mbois';
-          trainers.add(
-            TrainerPerformance(
-              id: doc.id,
-              name: resolvedName,
-              specialization:
-                  d['specialization'] as String? ?? 'Personal Trainer',
-              activeClients: 0,
-              packagesSold: 0,
-              totalSales: 0.0,
-              photoUrl: d['photoUrl'] as String?,
-              status: d['status'] as String? ?? 'active',
-              quarterlyTarget: 5000000.0,
-              monthlySales: const [0.0, 0.0, 0.0],
-              clients: const [],
-            ),
-          );
-        }
-      } catch (_) {
-        // Safe roster query fallback
-      }
-      return ManagerDashboardData(
-        totalActivePt: activePtCount,
+      return const ManagerDashboardData(
+        totalActivePt: 0,
         totalActiveClients: 0,
         totalPackagesSold: 0,
-        totalSales: 0.0,
-        monthlySales: const [0.0, 0.0, 0.0],
-        trainers: trainers,
+        totalSales: 0,
+        monthlySales: [0, 0, 0],
+        trainers: [],
         projectionPending: true,
       );
     }
@@ -463,6 +530,7 @@ class FirestoreManagerDashboardRepository
         clients.add(
           ManagerClientItem(
             id: clientSnapshot.id,
+            status: client['status'] as String? ?? 'unknown',
             name: client['name'] as String? ?? 'Klien',
             packageName: client['packageName'] as String? ?? 'Paket PT',
             totalSessions: _int(client['totalSessions']),
@@ -486,7 +554,7 @@ class FirestoreManagerDashboardRepository
           name: resolvedName,
           specialization:
               trainer['specialization'] as String? ?? 'Personal Trainer',
-          activeClients: _int(trainer['activeClients']),
+          activeClients: clients.where((c) => c.isActive).length,
           packagesSold: _int(trainer['packagesSold']),
           totalSales: _double(trainer['totalSales']),
           photoUrl: trainer['photoUrl'] as String?,
@@ -507,7 +575,12 @@ class FirestoreManagerDashboardRepository
 
     return ManagerDashboardData(
       totalActivePt: activePtCount,
-      totalActiveClients: _int(dashboard['totalActiveClients']),
+      totalActiveClients: trainers
+          .expand((t) => t.clients)
+          .where((c) => c.isActive)
+          .map((c) => c.id)
+          .toSet()
+          .length,
       totalPackagesSold: _int(dashboard['totalPackagesSold']),
       totalSales: _double(dashboard['totalSales']),
       monthlySales: _monthlySales(dashboard['monthlySales']),
@@ -580,6 +653,17 @@ class _ManagerDashboardScreenState
   bool _isLoading = true;
   String? _errorMessage;
   ManagerDashboardData? _dashboardData;
+  StreamSubscription<ManagerDashboardData>? _subscription;
+  int _generation = 0;
+  final ValueNotifier<ManagerDashboardData?> _liveData = ValueNotifier(null);
+
+  @override
+  void dispose() {
+    _generation++;
+    _subscription?.cancel();
+    _liveData.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -592,30 +676,47 @@ class _ManagerDashboardScreenState
   }
 
   Future<void> _loadData() async {
+    final generation = ++_generation;
+    await _subscription?.cancel();
+    if (!mounted || generation != _generation) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
+    void accept(ManagerDashboardData data) {
+      if (!mounted || generation != _generation) return;
+      _liveData.value = data;
+      setState(() {
+        _dashboardData = data;
+        _isLoading = false;
+        _errorMessage = null;
+      });
+    }
 
-    try {
-      final ManagerDashboardRepository repo =
-          widget.repository ?? ref.read(managerDashboardRepositoryProvider);
-      final data = await repo.fetchDashboardData(
-        year: _selectedYear,
-        quarter: _selectedQuarter,
-      );
-      if (mounted) {
-        setState(() {
-          _dashboardData = data;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString().replaceFirst('Exception: ', '');
-          _isLoading = false;
-        });
+    void fail(Object error) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+        _isLoading = false;
+      });
+    }
+
+    final ManagerDashboardRepository repo =
+        widget.repository ?? ref.read(managerDashboardRepositoryProvider);
+    if (repo is LiveManagerDashboardRepository) {
+      _subscription = (repo as LiveManagerDashboardRepository)
+          .watchDashboardData(year: _selectedYear, quarter: _selectedQuarter)
+          .listen(accept, onError: fail);
+    } else {
+      try {
+        accept(
+          await repo.fetchDashboardData(
+            year: _selectedYear,
+            quarter: _selectedQuarter,
+          ),
+        );
+      } catch (e) {
+        fail(e);
       }
     }
   }
@@ -1538,295 +1639,264 @@ class _ManagerDashboardScreenState
     );
   }
 
-  void _showTrainerDetail(BuildContext context, TrainerPerformance pt) {
+  void _showTrainerDetail(BuildContext context, TrainerPerformance originalPt) {
+    final ptId = originalPt.id;
     Navigator.of(context, rootNavigator: true).push<void>(
       MaterialPageRoute(
-        builder: (ctx) => Scaffold(
-          appBar: AppBar(title: Text(pt.name)),
-          body: DraggableScrollableSheet(
-            initialChildSize: 1,
-            minChildSize: 1,
-            maxChildSize: 1,
-            builder: (context, scrollController) {
-              return Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(20),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      margin: const EdgeInsets.symmetric(vertical: 10),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: _containerBorder,
-                        borderRadius: BorderRadius.circular(2),
+        builder: (ctx) => ValueListenableBuilder<ManagerDashboardData?>(
+          valueListenable: _liveData,
+          builder: (ctx, data, _) {
+            final pt =
+                data?.trainers.where((t) => t.id == ptId).firstOrNull ??
+                originalPt;
+            return Scaffold(
+              appBar: AppBar(title: Text(pt.name)),
+              body: DraggableScrollableSheet(
+                initialChildSize: 1,
+                minChildSize: 1,
+                maxChildSize: 1,
+                builder: (context, scrollController) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20),
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        children: [
-                          InitialAvatar(
-                            name: pt.name,
-                            radius: 24,
-                            backgroundColor: _colors.primaryContainer,
-                            foregroundColor: _colors.primary,
+                    child: Column(
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.symmetric(vertical: 10),
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: _containerBorder,
+                            borderRadius: BorderRadius.circular(2),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  pt.name,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: _textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  pt.specialization,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: _textMuted,
-                                  ),
-                                ),
-                              ],
-                            ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => Navigator.of(ctx).pop(),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: ListView(
-                        controller: scrollController,
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          // Target Achievement Card
-                          Card(
-                            elevation: 0,
-                            color: _containerBg,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(color: _containerBorder),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'Target Penjualan Triwulan',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                          color: _textPrimary,
-                                        ),
+                          child: Row(
+                            children: [
+                              InitialAvatar(
+                                name: pt.name,
+                                radius: 24,
+                                backgroundColor: _colors.primaryContainer,
+                                foregroundColor: _colors.primary,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      pt.name,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: _textPrimary,
                                       ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: pt.isTargetAchieved
-                                              ? _colors.secondaryContainer
-                                              : _colors.tertiaryContainer,
-                                          borderRadius: BorderRadius.circular(
-                                            6,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          pt.isTargetAchieved
-                                              ? 'Target Tercapai ✓'
-                                              : 'Belum Tercapai',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: pt.isTargetAchieved
-                                                ? _colors.onSecondaryContainer
-                                                : _colors.onTertiaryContainer,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    'Nilai Paket Terjual Tercatat: ${formatRupiah(pt.totalSales)}',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: _textSecondary,
                                     ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Target: ${formatRupiah(pt.quarterlyTarget)} (${pt.achievementPercentage.toStringAsFixed(1)}%)',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: _textMuted,
-                                    ),
-                                  ),
-                                  if (!pt.isTargetAchieved) ...[
                                     const SizedBox(height: 2),
                                     Text(
-                                      'Sisa Target: ${formatRupiah(pt.remainingAmount)}',
+                                      pt.specialization,
                                       style: TextStyle(
-                                        fontSize: 12,
-                                        color: _colors.tertiary,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    'Rincian Bulanan Triwulan Ini:',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: _textMuted,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceAround,
-                                    children: List.generate(3, (i) {
-                                      final labels = DashboardPeriod(
-                                        year: _selectedYear,
-                                        quarter: _selectedQuarter,
-                                      ).monthLabels;
-                                      final amt = i < pt.monthlySales.length
-                                          ? pt.monthlySales[i]
-                                          : 0.0;
-                                      return Column(
-                                        children: [
-                                          Text(
-                                            labels[i],
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color: _textSecondary,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            formatRupiah(amt),
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                              color: _textPrimary,
-                                            ),
-                                          ),
-                                        ],
-                                      );
-                                    }),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Daftar Klien yang Ditangani',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: _textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          if (pt.clients.isEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 24,
-                                horizontal: 16,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _containerBg,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'Belum ada klien yang ditangani oleh PT ini.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: _textMuted,
-                                  ),
-                                ),
-                              ),
-                            )
-                          else
-                            ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: pt.clients.length,
-                              separatorBuilder: (context, index) =>
-                                  const SizedBox(height: 8),
-                              itemBuilder: (ctx, cIdx) {
-                                final client = pt.clients[cIdx];
-                                return Card(
-                                  elevation: 0.5,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                    side: BorderSide(color: _containerBorder),
-                                  ),
-                                  child: ListTile(
-                                    dense: true,
-                                    title: Text(
-                                      client.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
                                         fontSize: 13,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      '${client.packageName} • ${client.attendedSessions} dari ${client.totalSessions} sesi dihadiri',
-                                      style: TextStyle(
-                                        fontSize: 11,
                                         color: _textMuted,
                                       ),
                                     ),
-                                    trailing: Icon(
-                                      Icons.chevron_right,
-                                      size: 18,
-                                      color: _colors.primary,
-                                    ),
-                                    onTap: () => _showClientAttendanceDetail(
-                                      context,
-                                      client,
-                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: () => Navigator.of(ctx).pop(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        Expanded(
+                          child: ListView(
+                            controller: scrollController,
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              // Target Achievement Card
+                              Card(
+                                elevation: 0,
+                                color: _containerBg,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: _containerBorder),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(14),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'Target Penjualan Triwulan',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                              color: _textPrimary,
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: pt.isTargetAchieved
+                                                  ? _colors.secondaryContainer
+                                                  : _colors.tertiaryContainer,
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              pt.isTargetAchieved
+                                                  ? 'Target Tercapai ✓'
+                                                  : 'Belum Tercapai',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: pt.isTargetAchieved
+                                                    ? _colors
+                                                          .onSecondaryContainer
+                                                    : _colors
+                                                          .onTertiaryContainer,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        'Nilai Paket Terjual Tercatat: ${formatRupiah(pt.totalSales)}',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: _textSecondary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Target: ${formatRupiah(pt.quarterlyTarget)} (${pt.achievementPercentage.toStringAsFixed(1)}%)',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: _textMuted,
+                                        ),
+                                      ),
+                                      if (!pt.isTargetAchieved) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Sisa Target: ${formatRupiah(pt.remainingAmount)}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: _colors.tertiary,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        'Rincian Bulanan Triwulan Ini:',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: _textMuted,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceAround,
+                                        children: List.generate(3, (i) {
+                                          final labels = DashboardPeriod(
+                                            year: _selectedYear,
+                                            quarter: _selectedQuarter,
+                                          ).monthLabels;
+                                          final amt = i < pt.monthlySales.length
+                                              ? pt.monthlySales[i]
+                                              : 0.0;
+                                          return Column(
+                                            children: [
+                                              Text(
+                                                labels[i],
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _textSecondary,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                formatRupiah(amt),
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: _textPrimary,
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        }),
+                                      ),
+                                    ],
                                   ),
-                                );
-                              },
-                            ),
-                        ],
-                      ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton.icon(
+                                icon: const Icon(Icons.people_outline),
+                                label: const Text(
+                                  'Daftar Klien yang Ditangani',
+                                ),
+                                onPressed: () => Navigator.of(context).push<void>(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        ValueListenableBuilder<
+                                          ManagerDashboardData?
+                                        >(
+                                          valueListenable: _liveData,
+                                          builder: (_, data, _) =>
+                                              ManagerClientHistoryScreen(
+                                                trainer:
+                                                    data?.trainers
+                                                        .where(
+                                                          (t) => t.id == pt.id,
+                                                        )
+                                                        .firstOrNull ??
+                                                    pt,
+                                                onAttendance: (context, client) =>
+                                                    _showClientAttendanceDetail(
+                                                      context,
+                                                      client,
+                                                    ),
+                                              ),
+                                        ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
+                  );
+                },
+              ),
+            );
+          },
         ),
       ),
     );
@@ -1852,7 +1922,7 @@ class _ManagerDashboardScreenState
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Read-Only • ${client.name}',
+                            'Read-Only • ${client.name} • ${client.statusLabel}',
                             style: TextStyle(
                               fontSize: 12,
                               color: _textMuted,

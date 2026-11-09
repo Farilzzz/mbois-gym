@@ -140,8 +140,11 @@ class PackageSaleRecord {
 
   /// Only independently verified sales count as revenue. A package request
   /// (including a recorded or pending purchase) is not payment evidence.
-  bool get isValid => status.trim().toLowerCase() == 'valid' &&
-      price > 0 && clientId.isNotEmpty && trainerId.isNotEmpty &&
+  bool get isValid =>
+      status.trim().toLowerCase() == 'valid' &&
+      price > 0 &&
+      clientId.isNotEmpty &&
+      trainerId.isNotEmpty &&
       timestamp.isAfter(DateTime.fromMillisecondsSinceEpoch(0));
 
   PackageSaleRecord copyWith({

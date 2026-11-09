@@ -21,7 +21,6 @@ class _FakeCloudAuth extends CloudAuthController {
   Future<CloudProfile?> build() async => profile;
 }
 
-
 class RegressionMockGymRepository implements GymRepository {
   final List<Client> clients = [];
   final Map<int, String> clientLifecycle = {};
@@ -84,16 +83,10 @@ class RegressionMockGymRepository implements GymRepository {
         'trainerName': 'Coach Mbois',
         'status': 'completed',
         'clientSignatureStrokes': [
-          [
-            const Offset(10.0, 10.0),
-            const Offset(20.0, 20.0),
-          ]
+          [const Offset(10.0, 10.0), const Offset(20.0, 20.0)],
         ],
         'coachSignatureStrokes': [
-          [
-            const Offset(15.0, 15.0),
-            const Offset(25.0, 25.0),
-          ]
+          [const Offset(15.0, 15.0), const Offset(25.0, 25.0)],
         ],
       };
     }
@@ -105,9 +98,10 @@ class RegressionMockGymRepository implements GymRepository {
 
   @override
   Future<Client?> getClient(int clientId) async {
-    return clients
-        .cast<Client?>()
-        .firstWhere((c) => c?.id == clientId, orElse: () => null);
+    return clients.cast<Client?>().firstWhere(
+      (c) => c?.id == clientId,
+      orElse: () => null,
+    );
   }
 
   @override
@@ -148,7 +142,7 @@ class RegressionMockGymRepository implements GymRepository {
         status: 'active',
         createdAt: DateTime.now(),
         closedAt: null,
-      )
+      ),
     ];
     sessions[pkgId] = [];
     return id;
@@ -190,6 +184,15 @@ class RegressionMockGymRepository implements GymRepository {
       return null;
     }
   }
+
+  @override
+  Future<List<PtPackage>> packagesForClient(int clientId) async =>
+      packages[clientId] ?? [];
+
+  @override
+  Future<Map<String, dynamic>> packageCancellationDetails(
+    int packageId,
+  ) async => {};
 
   @override
   Future<PtPackage?> latestPackage(int clientId) async {
@@ -413,22 +416,23 @@ void main() {
     });
 
     testWidgets(
-        '1 & 4. Klien aktif terlihat di Home & Tidak ada kartu aktif palsu 0/0',
-        (tester) async {
-      repo.addTestClient(
-        id: 1,
-        name: 'Budi Santoso',
-        lifecycle: 'active',
-        totalSessions: 8,
-        completedSessions: 2,
-      );
+      '1 & 4. Klien aktif terlihat di Home & Tidak ada kartu aktif palsu 0/0',
+      (tester) async {
+        repo.addTestClient(
+          id: 1,
+          name: 'Budi Santoso',
+          lifecycle: 'active',
+          totalSessions: 8,
+          completedSessions: 2,
+        );
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            gymRepositoryProvider.overrideWithValue(repo),
-            authProvider.overrideWith(() => _LoggedInAuth(1)),
-            cloudAuthProvider.overrideWith(() => _FakeCloudAuth(
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              gymRepositoryProvider.overrideWithValue(repo),
+              authProvider.overrideWith(() => _LoggedInAuth(1)),
+              cloudAuthProvider.overrideWith(
+                () => _FakeCloudAuth(
                   const CloudProfile(
                     'coach-1',
                     'Coach Mbois',
@@ -437,17 +441,19 @@ void main() {
                     role: 'trainer',
                     status: 'active',
                   ),
-                )),
-          ],
-          child: const MaterialApp(home: DashboardScreen()),
-        ),
-      );
-      await tester.pumpAndSettle();
+                ),
+              ),
+            ],
+            child: const MaterialApp(home: DashboardScreen()),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.text('Budi Santoso'), findsOneWidget);
-      expect(find.textContaining('Sisa 6 Sesi dari 8'), findsOneWidget);
-      expect(find.textContaining('0 Sesi dari 0'), findsNothing);
-    });
+        expect(find.text('Budi Santoso'), findsOneWidget);
+        expect(find.textContaining('Sisa 6 Sesi dari 8'), findsOneWidget);
+        expect(find.textContaining('0 Sesi dari 0'), findsNothing);
+      },
+    );
 
     testWidgets('2. Klien dibatalkan tidak muncul di Home', (tester) async {
       repo.addTestClient(
@@ -464,16 +470,18 @@ void main() {
           overrides: [
             gymRepositoryProvider.overrideWithValue(repo),
             authProvider.overrideWith(() => _LoggedInAuth(1)),
-            cloudAuthProvider.overrideWith(() => _FakeCloudAuth(
-                  const CloudProfile(
-                    'coach-1',
-                    'Coach Mbois',
-                    true,
-                    email: 'coach@mboisgym.com',
-                    role: 'trainer',
-                    status: 'active',
-                  ),
-                )),
+            cloudAuthProvider.overrideWith(
+              () => _FakeCloudAuth(
+                const CloudProfile(
+                  'coach-1',
+                  'Coach Mbois',
+                  true,
+                  email: 'coach@mboisgym.com',
+                  role: 'trainer',
+                  status: 'active',
+                ),
+              ),
+            ),
           ],
           child: const MaterialApp(home: DashboardScreen()),
         ),
@@ -485,23 +493,24 @@ void main() {
     });
 
     testWidgets(
-        '3. Klien selesai seluruh paket tidak muncul sebagai klien aktif di Home',
-        (tester) async {
-      repo.addTestClient(
-        id: 3,
-        name: 'Eko Selesai',
-        lifecycle: 'completed',
-        totalSessions: 4,
-        completedSessions: 4,
-        packageStatus: 'closed',
-      );
+      '3. Klien selesai seluruh paket tidak muncul sebagai klien aktif di Home',
+      (tester) async {
+        repo.addTestClient(
+          id: 3,
+          name: 'Eko Selesai',
+          lifecycle: 'completed',
+          totalSessions: 4,
+          completedSessions: 4,
+          packageStatus: 'closed',
+        );
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            gymRepositoryProvider.overrideWithValue(repo),
-            authProvider.overrideWith(() => _LoggedInAuth(1)),
-            cloudAuthProvider.overrideWith(() => _FakeCloudAuth(
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              gymRepositoryProvider.overrideWithValue(repo),
+              authProvider.overrideWith(() => _LoggedInAuth(1)),
+              cloudAuthProvider.overrideWith(
+                () => _FakeCloudAuth(
                   const CloudProfile(
                     'coach-1',
                     'Coach Mbois',
@@ -510,20 +519,20 @@ void main() {
                     role: 'trainer',
                     status: 'active',
                   ),
-                )),
-          ],
-          child: const MaterialApp(home: DashboardScreen()),
-        ),
-      );
-      await tester.pumpAndSettle();
+                ),
+              ),
+            ],
+            child: const MaterialApp(home: DashboardScreen()),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.text('Eko Selesai'), findsNothing);
-      expect(find.textContaining('0 Sesi dari 0'), findsNothing);
-    });
+        expect(find.text('Eko Selesai'), findsNothing);
+        expect(find.textContaining('0 Sesi dari 0'), findsNothing);
+      },
+    );
 
-    test(
-        '5, 6, 7 & 8. Paket 4 sesi: buat 4 jadwal, batalkan 1 bebaskan slot, buat pengganti, completed tetap',
-        () async {
+    test('5, 6, 7 & 8. Paket 4 sesi: buat 4 jadwal, batalkan 1 bebaskan slot, buat pengganti, completed tetap', () async {
       repo.addTestClient(
         id: 4,
         name: 'Siti Rahma',
@@ -535,20 +544,22 @@ void main() {
 
       // Initial state: total = 4, completed = 1
       var sessions = await repo.packageSessions(pkg.id);
-      var completedCount =
-          sessions.where((s) => s.status == 'completed').length;
-      var scheduledCount =
-          sessions.where((s) => s.status == 'scheduled').length;
+      var completedCount = sessions
+          .where((s) => s.status == 'completed')
+          .length;
+      var scheduledCount = sessions
+          .where((s) => s.status == 'scheduled')
+          .length;
       var availableSlots = pkg.totalSessions - completedCount - scheduledCount;
       expect(availableSlots, equals(3));
 
       // Buat 3 jadwal aktif untuk mengisi slot penuh
-      await repo.schedule(
-          pkg.id, DateTime.now().add(const Duration(days: 1)));
+      await repo.schedule(pkg.id, DateTime.now().add(const Duration(days: 1)));
       final s2 = await repo.schedule(
-          pkg.id, DateTime.now().add(const Duration(days: 2)));
-      await repo.schedule(
-          pkg.id, DateTime.now().add(const Duration(days: 3)));
+        pkg.id,
+        DateTime.now().add(const Duration(days: 2)),
+      );
+      await repo.schedule(pkg.id, DateTime.now().add(const Duration(days: 3)));
 
       sessions = await repo.packageSessions(pkg.id);
       scheduledCount = sessions.where((s) => s.status == 'scheduled').length;
@@ -556,8 +567,10 @@ void main() {
       expect(availableSlots, equals(0)); // Slot habis
 
       // Batalkan 1 jadwal (s2)
-      final cancelOk =
-          await repo.cancelSession(s2, cancelReason: 'Klien berhalangan');
+      final cancelOk = await repo.cancelSession(
+        s2,
+        cancelReason: 'Klien berhalangan',
+      );
       expect(cancelOk, isTrue);
 
       // Hitung ulang slot: sesi batal TIDAK dihitung sebagai slot terpakai
@@ -570,7 +583,9 @@ void main() {
 
       // Buat jadwal pengganti
       final sReplacement = await repo.schedule(
-          pkg.id, DateTime.now().add(const Duration(days: 4)));
+        pkg.id,
+        DateTime.now().add(const Duration(days: 4)),
+      );
       expect(sReplacement, isPositive);
 
       sessions = await repo.packageSessions(pkg.id);
@@ -579,9 +594,7 @@ void main() {
       expect(availableSlots, equals(0));
     });
 
-    test(
-        '9 & 16. Pemotongan sesi hanya terjadi satu kali dan tidak bisa dipotong ulang',
-        () async {
+    test('9 & 16. Pemotongan sesi hanya terjadi satu kali dan tidak bisa dipotong ulang', () async {
       repo.addTestClient(
         id: 5,
         name: 'Andi Pratama',
@@ -596,10 +609,10 @@ void main() {
         sId,
         'Catatan pertama',
         clientStrokes: [
-          [const Offset(10, 10), const Offset(20, 20)]
+          [const Offset(10, 10), const Offset(20, 20)],
         ],
         coachStrokes: [
-          [const Offset(30, 30), const Offset(40, 40)]
+          [const Offset(30, 30), const Offset(40, 40)],
         ],
         clientName: 'Andi Pratama',
         trainerName: 'Coach Mbois',
@@ -640,98 +653,101 @@ void main() {
     });
 
     test(
-        '11, 12 & 13. Jadwal planned dapat diedit tanggal & jam tanpa ubah kuota',
-        () async {
-      repo.addTestClient(
-        id: 7,
-        name: 'Doni Reschedule',
-        lifecycle: 'active',
-        totalSessions: 4,
-      );
-      final pkg = (await repo.currentPackage(7))!;
-      final initialTime = DateTime(2026, 11, 5, 10, 0);
-      final sId = await repo.schedule(pkg.id, initialTime);
+      '11, 12 & 13. Jadwal planned dapat diedit tanggal & jam tanpa ubah kuota',
+      () async {
+        repo.addTestClient(
+          id: 7,
+          name: 'Doni Reschedule',
+          lifecycle: 'active',
+          totalSessions: 4,
+        );
+        final pkg = (await repo.currentPackage(7))!;
+        final initialTime = DateTime(2026, 11, 5, 10, 0);
+        final sId = await repo.schedule(pkg.id, initialTime);
 
-      final newTime = DateTime(2026, 11, 6, 15, 30);
-      final editOk = await repo.rescheduleSession(
-        sId,
-        newTime,
-        notes: 'Reschedule ke sore hari',
-      );
-      expect(editOk, isTrue);
+        final newTime = DateTime(2026, 11, 6, 15, 30);
+        final editOk = await repo.rescheduleSession(
+          sId,
+          newTime,
+          notes: 'Reschedule ke sore hari',
+        );
+        expect(editOk, isTrue);
 
-      final sessions = await repo.packageSessions(pkg.id);
-      final updated = sessions.firstWhere((s) => s.id == sId);
-      expect(updated.scheduledAt, equals(newTime));
-      expect(updated.notes, equals('Reschedule ke sore hari'));
-      expect(updated.status, equals('scheduled'));
+        final sessions = await repo.packageSessions(pkg.id);
+        final updated = sessions.firstWhere((s) => s.id == sId);
+        expect(updated.scheduledAt, equals(newTime));
+        expect(updated.notes, equals('Reschedule ke sore hari'));
+        expect(updated.status, equals('scheduled'));
 
-      // Kuota completed tetap 0
-      final completed = await repo.completedCount(pkg.id);
-      expect(completed, equals(0));
-    });
+        // Kuota completed tetap 0
+        final completed = await repo.completedCount(pkg.id);
+        expect(completed, equals(0));
+      },
+    );
 
     test(
-        '14 & 15. Sesi completed tercatat di riwayat dengan kedua tanda tangan',
-        () async {
-      repo.addTestClient(
-        id: 8,
-        name: 'Hendra Signature',
-        lifecycle: 'active',
-        totalSessions: 4,
-      );
-      final pkg = (await repo.currentPackage(8))!;
-      final sId = await repo.schedule(pkg.id, DateTime.now());
+      '14 & 15. Sesi completed tercatat di riwayat dengan kedua tanda tangan',
+      () async {
+        repo.addTestClient(
+          id: 8,
+          name: 'Hendra Signature',
+          lifecycle: 'active',
+          totalSessions: 4,
+        );
+        final pkg = (await repo.currentPackage(8))!;
+        final sId = await repo.schedule(pkg.id, DateTime.now());
 
-      final clientStrokes = [
-        [const Offset(12, 12), const Offset(24, 24)]
-      ];
-      final coachStrokes = [
-        [const Offset(34, 34), const Offset(48, 48)]
-      ];
+        final clientStrokes = [
+          [const Offset(12, 12), const Offset(24, 24)],
+        ];
+        final coachStrokes = [
+          [const Offset(34, 34), const Offset(48, 48)],
+        ];
 
-      await repo.completeSession(
-        sId,
-        'Latihan Chest & Triceps',
-        clientStrokes: clientStrokes,
-        coachStrokes: coachStrokes,
-        clientName: 'Hendra Signature',
-        trainerName: 'Coach Faril',
-      );
+        await repo.completeSession(
+          sId,
+          'Latihan Chest & Triceps',
+          clientStrokes: clientStrokes,
+          coachStrokes: coachStrokes,
+          clientName: 'Hendra Signature',
+          trainerName: 'Coach Faril',
+        );
 
-      final details = await repo.getSessionDetails(sId);
-      expect(details, isNotNull);
-      expect(details!['clientName'], equals('Hendra Signature'));
-      expect(details['trainerName'], equals('Coach Faril'));
-      expect(details['notes'], equals('Latihan Chest & Triceps'));
-      expect(details['clientSignatureStrokes'], isNotEmpty);
-      expect(details['coachSignatureStrokes'], isNotEmpty);
-    });
+        final details = await repo.getSessionDetails(sId);
+        expect(details, isNotNull);
+        expect(details!['clientName'], equals('Hendra Signature'));
+        expect(details['trainerName'], equals('Coach Faril'));
+        expect(details['notes'], equals('Latihan Chest & Triceps'));
+        expect(details['clientSignatureStrokes'], isNotEmpty);
+        expect(details['coachSignatureStrokes'], isNotEmpty);
+      },
+    );
 
     testWidgets(
-        '17, 18 & 19. Tampilan layout adaptif, tidak overflow pada 320x640',
-        (tester) async {
-      tester.view.physicalSize = const Size(320, 640);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
+      '17, 18 & 19. Tampilan layout adaptif, tidak overflow pada 320x640',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
 
-      repo.addTestClient(
-        id: 9,
-        name: 'Klien Layar Kecil',
-        lifecycle: 'active',
-        totalSessions: 4,
-        completedSessions: 1,
-      );
+        repo.addTestClient(
+          id: 9,
+          name: 'Klien Layar Kecil',
+          lifecycle: 'active',
+          totalSessions: 4,
+          completedSessions: 1,
+        );
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            gymRepositoryProvider.overrideWithValue(repo),
-            authProvider.overrideWith(() => _LoggedInAuth(1)),
-            cloudAuthProvider.overrideWith(() => _FakeCloudAuth(
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              gymRepositoryProvider.overrideWithValue(repo),
+              authProvider.overrideWith(() => _LoggedInAuth(1)),
+              cloudAuthProvider.overrideWith(
+                () => _FakeCloudAuth(
                   const CloudProfile(
                     'coach-1',
                     'Coach Mbois',
@@ -740,20 +756,20 @@ void main() {
                     role: 'trainer',
                     status: 'active',
                   ),
-                )),
-          ],
-          child: const MaterialApp(home: DashboardScreen()),
-        ),
-      );
-      await tester.pumpAndSettle();
+                ),
+              ),
+            ],
+            child: const MaterialApp(home: DashboardScreen()),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      expect(tester.takeException(), isNull);
-      expect(find.text('Klien Layar Kecil'), findsOneWidget);
-    });
+        expect(tester.takeException(), isNull);
+        expect(find.text('Klien Layar Kecil'), findsOneWidget);
+      },
+    );
 
-    test(
-        '20. Lifecycle consistency: deleteClient menandai cancelled tanpa hapus histori',
-        () async {
+    test('20. Lifecycle consistency: deleteClient menandai cancelled tanpa hapus histori', () async {
       repo.addTestClient(
         id: 10,
         name: 'Klien Hapus Lembut',

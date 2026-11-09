@@ -484,8 +484,13 @@ void main() {
           timestamp: DateTime(2027, 3, 1),
         );
 
-        final recorded = await firestoreRepo.recordPackageSale(sale);
-        expect(recorded.id, 'sale-cloud-1');
+        await expectLater(
+          firestoreRepo.recordPackageSale(sale),
+          throwsUnsupportedError,
+        );
+        expect(store.data, isEmpty);
+        // Trusted backend fixture, not a client write.
+        store.data['package_sales/sale-cloud-1'] = sale.toMap();
 
         final sales = await firestoreRepo.getPackageSales();
         expect(sales.length, 1);

@@ -139,14 +139,18 @@ void main() {
     test('active manager can login without trainer-only rejection', () async {
       gateway.credentials['manager@mboisgym.com'] = 'Password123!';
       gateway.userProfiles['manager'] = const CloudProfile(
-        'manager', 'Manager', true,
-        email: 'manager@mboisgym.com', role: 'manager',
+        'manager',
+        'Manager',
+        true,
+        email: 'manager@mboisgym.com',
+        role: 'manager',
       );
-      final container = ProviderContainer(overrides: [
-        cloudGatewayProvider.overrideWith((ref) => gateway),
-      ]);
+      final container = ProviderContainer(
+        overrides: [cloudGatewayProvider.overrideWith((ref) => gateway)],
+      );
       addTearDown(container.dispose);
-      final error = await container.read(cloudAuthProvider.notifier)
+      final error = await container
+          .read(cloudAuthProvider.notifier)
           .login('manager@mboisgym.com', 'Password123!');
       expect(error, isNull);
       expect(container.read(cloudAuthProvider).value?.role, 'manager');
@@ -155,14 +159,22 @@ void main() {
     test('unknown active role cannot authenticate', () async {
       gateway.credentials['other@mboisgym.com'] = 'Password123!';
       gateway.userProfiles['other'] = const CloudProfile(
-        'other', 'Other', true, email: 'other@mboisgym.com', role: 'owner',
+        'other',
+        'Other',
+        true,
+        email: 'other@mboisgym.com',
+        role: 'owner',
       );
-      final container = ProviderContainer(overrides: [
-        cloudGatewayProvider.overrideWith((ref) => gateway),
-      ]);
+      final container = ProviderContainer(
+        overrides: [cloudGatewayProvider.overrideWith((ref) => gateway)],
+      );
       addTearDown(container.dispose);
-      expect(await container.read(cloudAuthProvider.notifier)
-          .login('other@mboisgym.com', 'Password123!'), isNotNull);
+      expect(
+        await container
+            .read(cloudAuthProvider.notifier)
+            .login('other@mboisgym.com', 'Password123!'),
+        isNotNull,
+      );
       expect(gateway.currentUid, isNull);
     });
 
@@ -260,11 +272,20 @@ void main() {
       const legacy = CloudProfile('legacy', 'Coach', true);
       expect(legacy.heightCm, isNull);
       expect(legacy.specialization, isEmpty);
-      const rich = CloudProfile('rich', 'Coach', true,
-        heightCm: 178, weightKg: 72.5, specialization: 'Strength',
-        experienceYears: 5, certifications: 'NASM', bio: 'Coach',
-        photoUrl: 'https://example.org/photo.jpg', status: 'active',
-        role: 'manager');
+      const rich = CloudProfile(
+        'rich',
+        'Coach',
+        true,
+        heightCm: 178,
+        weightKg: 72.5,
+        specialization: 'Strength',
+        experienceYears: 5,
+        certifications: 'NASM',
+        bio: 'Coach',
+        photoUrl: 'https://example.org/photo.jpg',
+        status: 'active',
+        role: 'manager',
+      );
       expect(rich.weightKg, 72.5);
       expect(rich.typedRole, CloudRole.manager);
       expect(rich.status, 'active');

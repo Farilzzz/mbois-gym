@@ -19,7 +19,9 @@ class FirebaseCloudGateway implements CloudGateway {
   Future<CloudProfile?> profile(String uid) async {
     final snapshot = await firestore.collection('users').doc(uid).get();
     final data = snapshot.data();
-    if (!snapshot.exists || data == null || CloudRole.parse(data['role']) == null) {
+    if (!snapshot.exists ||
+        data == null ||
+        CloudRole.parse(data['role']) == null) {
       return null;
     }
     final role = data['role'] as String? ?? 'trainer';
@@ -29,13 +31,17 @@ class FirebaseCloudGateway implements CloudGateway {
     final authDisplayName = auth.currentUser?.displayName?.trim();
 
     final displayName =
-        (rawDisplayName != null && rawDisplayName.isNotEmpty && rawDisplayName != 'PT')
-            ? rawDisplayName
-            : (rawName != null && rawName.isNotEmpty && rawName != 'PT')
-                ? rawName
-                : (authDisplayName != null && authDisplayName.isNotEmpty && authDisplayName != 'PT')
-                    ? authDisplayName
-                    : (role == 'manager' ? 'Gym Manager' : 'Coach Mbois');
+        (rawDisplayName != null &&
+            rawDisplayName.isNotEmpty &&
+            rawDisplayName != 'PT')
+        ? rawDisplayName
+        : (rawName != null && rawName.isNotEmpty && rawName != 'PT')
+        ? rawName
+        : (authDisplayName != null &&
+              authDisplayName.isNotEmpty &&
+              authDisplayName != 'PT')
+        ? authDisplayName
+        : (role == 'manager' ? 'Gym Manager' : 'Coach Mbois');
     final email = (data['email'] as String?)?.trim().isNotEmpty == true
         ? (data['email'] as String).trim()
         : (auth.currentUser?.email ?? '');
@@ -102,7 +108,6 @@ class FirebaseCloudGateway implements CloudGateway {
   @override
   Future<void> signIn(String email, String password) =>
       auth.signInWithEmailAndPassword(email: email.trim(), password: password);
-
 
   @override
   Future<void> signOut() => auth.signOut();
